@@ -25,11 +25,17 @@ end
 
 fid = fopen([simpath resultsName '.sim'],'r');
 
-file_version = fread(fid,1,'int32');
+fileVersion = fread(fid,1,'int32');
 sim.seed = fread(fid,1,'uint32');
-if ~ismember(file_version,[1 2])
+if fileVersion~=1
     fclose(fid);
-    error(['Wrong file version: ' num2str(file_version)])
+    if fileVersion == 6
+        sim = readSim7(parfilepath,index);
+        return
+    else
+        disp(fileVersion)
+        error('Wrong file version:')
+    end
 end
 
 % Read parameters
@@ -38,9 +44,6 @@ end
 verbose = readPar(fid,'verbose');
 sim.t_max = readPar(fid,'t_max');
 sim.sample_interval = readPar(fid,'sample_interval');
-if file_version >= 2
-    sim.checkpoint_interval = readPar(fid,'checkpoint_interval');
-end
 seed2 = readPar(fid,'seed');
 %if seed2 ~= sim.seed
 %    warning('Seed error')
@@ -90,7 +93,7 @@ end
 %read fitness modules:
 sim.Fitness = {};
 while strcmp(modType,'fitness')
-    sim.Fitness{end+1} = readFitness(modName,fid,file_version);
+    sim.Fitness{end+1} = readFitness(modName,fid);
     [modType,modName] = readParPair(fid);
 end
 
@@ -115,7 +118,7 @@ end
 sim.loci = fread(fid,1,'int32');
 sim.sample_count = fread(fid,1,'int32');
 for si=1:sim.sample_count
-    sim.samples(si) = readSample(fid,sim,file_version);
+    sim.samples(si) = readSample(fid,sim);
 end
 if sim.gene_tracking
     sim.gene_lists = {};
@@ -136,7 +139,7 @@ if sim.gene_tracking
         sim.gene_lists{li} = list;
     end
 end
-% Don't read checkpoints
+
 fclose(fid);
 save([simpath resultsName '.mat'], 'sim')
 
@@ -154,9 +157,6 @@ switch lower(name)
         transform.max = readPar(fid,'max');
     case 'normal_deviation'
         transform.SD = readPar(fid,'sd');
-    case 'range'
-        transform.min = readPar(fid,'min');
-        transform.max = readPar(fid,'max');
     otherwise
         error(['Unknown transform : ' name])
 end
@@ -196,7 +196,7 @@ switch lower(module)
         error('Unknown Preference model!')
 end
 
-function fitness = readFitness(module,fid, file_version)
+function fitness = readFitness(module,fid)
 fitness.name = module;
 switch lower(module)
     case 'resource_landscape'
@@ -209,9 +209,6 @@ switch lower(module)
         fitness.k_space = readPar(fid,'k_space');
     case 'stabilizing_selection'
         fitness.trait = readPar(fid,'trait');
-        if file_version >= 2
-            fitness.optimal_value = readPar(fid,'optimal_value');
-        end
         fitness.cost_coefficient = readPar(fid,'cost_coefficient');
         fitness.cost_exponent = readPar(fid,'cost_exponent');
     case {'discrete_resources'}
@@ -229,7 +226,7 @@ switch lower(module)
         fitness.r = readPar(fid,'r');
         fitness.K = readPar(fid,'k');
         fitness.s_space = readPar(fid,'s_space');
-    case 'catastrophes'
+    case 'catastrophe'
         fitness.P_catastrophe = readPar(fid,'p_catastrophe');
         fitness.P_survive = readPar(fid,'p_survive');
     otherwise
@@ -237,29 +234,21 @@ switch lower(module)
 end
 
 
-function sample = readSample(fid,sim, file_version)
+function sample = readSample(fid,sim)
 sample.gen = fread(fid,1,'int64');
 sample.sample_size = fread(fid,1,'int32'); % file format is little endian.
 
 if sim.gene_sampling
     switch lower(sim.Genetics.model)
         case 'diallelic'
-            G1 = fread(fid,sim.loci*sample.sample_size,'int8');
-            G2 = fread(fid,sim.loci*sample.sample_size,'int8');
+            G1 = fread(fid,sim.loci*sample.sample_size,'int32');
+            G2 = fread(fid,sim.loci*sample.sample_size,'int32');
         case 'continuous_alleles'
             G1 = fread(fid,sim.loci*sample.sample_size,'float32');
             G2 = fread(fid,sim.loci*sample.sample_size,'float32');
     end
     sample.G1 = reshape(G1,sim.loci,sample.sample_size);
     sample.G2 = reshape(G2,sim.loci,sample.sample_size);
-end
-if file_version>=2
-    if sim.gene_tracking
-        G1id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G1id = reshape(G1id,sim.loci,sample.sample_size);
-        G2id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G2id = reshape(G2id,sim.loci,sample.sample_size);
-    end
 end
 
 for tri = 1:length(sim.Traits)
@@ -278,13 +267,11 @@ switch lower(sim.Space.model)
     otherwise
         error('Unsupported space model')
 end
-if file_version==1
-    if sim.gene_tracking
-        G1id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G1id = reshape(G1id,sim.loci,sample.sample_size);
-        G2id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G2id = reshape(G2id,sim.loci,sample.sample_size);
-    end
+if sim.gene_tracking
+    G1id = fread(fid,sim.loci*sample.sample_size,'ubit64');
+    sample.G1id = reshape(G1id,sim.loci,sample.sample_size);
+    G2id = fread(fid,sim.loci*sample.sample_size,'ubit64');
+    sample.G2id = reshape(G2id,sim.loci,sample.sample_size);
 end
 
 function val = readPar(fid, pname)
