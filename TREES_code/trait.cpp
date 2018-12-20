@@ -76,7 +76,7 @@ void Trait::generatePhenotypes() {
         }
     }
     for (int ti=0; ti<transforms.size(); ++ti) {
-        transforms.at(ti)->transform(&X[0], X.size());
+        transforms[ti]->transform(&X[0], X.size());
     }
 }
 
@@ -88,7 +88,7 @@ void Trait::compactData(std::vector<bool>& alive) {
     // compact arrays:
     int iw = 0; // write index
     for (int ir=0; ir<pop.size(); ++ir) { // ir = read index
-        if (alive.at(ir)) {
+        if (alive[ir]) {
             if (ir>iw) {
                 for (int d=0; d<dims; ++d) {
                     traitValue(iw,d) = traitValue(ir,d);

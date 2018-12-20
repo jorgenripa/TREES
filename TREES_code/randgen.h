@@ -38,9 +38,6 @@ void randseed(unsigned seed);
 int weightedChoice( std::vector<double>& weights);
 int weightedChoiceCumSum( std::vector<double>& cumWeights);
 
-// for debugging:
-//unsigned long get_rand_count();
-
 // class to generate a stream of random bits (true/false)
 class bitGenerator {
     unsigned bits;

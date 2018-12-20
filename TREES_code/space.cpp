@@ -114,11 +114,11 @@ DiscreteSpaceImp::~DiscreteSpaceImp() {
 
 
 int DiscreteSpaceImp::getLinearPatch(int individual) {
-  return linearPatches.at(individual);
+  return linearPatches[individual];
 }
 
-double DiscreteSpaceImp::getPosition(int individual, int dim) {
-    return patches.at(individual*Dims + dim);
+double DiscreteSpaceImp::getPosition(int indiviudal, int dim) {
+    return patches[indiviudal*Dims + dim];
 }
 
 double DiscreteSpaceImp::getDist2(int ind1, int ind2) { // squared distance
@@ -135,12 +135,12 @@ double DiscreteSpaceImp::getDist2(int ind1, int ind2) { // squared distance
 }
 
 int DiscreteSpaceImp::popSizeInPatch(int linearPatch) {
-    if (pop.getAge()!=generationLastCount) {
+    if ((int)pop.getAge()!=generationLastCount) {
         patchPopSizes.assign(getPatchCount(), 0);
         for (int i=0; i<pop.size(); ++i) {
             patchPopSizes.at(getLinearPatch(i)) += 1;
         }
-        generationLastCount = pop.getAge();
+        generationLastCount = (int)pop.getAge();
     }
     return patchPopSizes.at(linearPatch);
 }
@@ -156,7 +156,7 @@ void DiscreteSpaceImp::initialize(int n0) {
         for (int d=0; d<Dims; ++d) {
             p = length*p + initialPatch;
         }
-        linearPatches.assign(n0, p);
+        linearPatches.assign(patches.size(), p);
     }
 }
 
@@ -254,7 +254,7 @@ void DiscreteSpaceImp::nextGeneration() {
             for (int d=0; d<Dims; ++d) {
                 p = length*p + getPatch(i, d);
             }
-            linearPatches.at(i) = p;
+            linearPatches[i] = p;
         }
     }
 }
@@ -273,7 +273,7 @@ void DiscreteSpaceImp::compactData(std::vector<bool>& alive) {
             for (int d=0; d<Dims; ++d) {
                 getPatch(iw, d) = getPatch(ir, d);
             }
-            linearPatches.at(iw) = linearPatches.at(ir);
+            linearPatches[iw] = linearPatches[ir];
             ++iw;
         }
     }
@@ -323,11 +323,11 @@ ContinuousSpace::~ContinuousSpace() {
 bool ContinuousSpace::isDiscrete() { return false; }
 
 double& ContinuousSpace::getCoord(int indiviudal, int dim) {
-    return pos.at(indiviudal*Dims + dim);
+    return pos[indiviudal*Dims + dim];
 }
 
 double ContinuousSpace::getPosition(int indiviudal, int dim) {
-    return pos.at(indiviudal*Dims + dim);
+    return pos[indiviudal*Dims + dim];
 }
 
 double ContinuousSpace::getDist2(int ind1, int ind2) { // squared distance

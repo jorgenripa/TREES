@@ -259,9 +259,7 @@ void Population::makeNextGeneration() {
     if (somebodyDied) {
         compactData();
     }
-    if (n>0) {
-        survive(); // adult survival.
-    }
+    survive(); // adult survival.
     ++age;
     // Every now and then prune the Allele tables:
     if (gene_tracking && age % 50 == 0) {
@@ -276,7 +274,7 @@ void Population::reproduce() {
     std::vector<int> dadList = findDads();
     nnew = 0; // restart counting
     for (int mom=0; mom<n; ++mom) {
-        int dad = dadList.at(mom);
+        int dad = dadList[mom];
         if (dad>=0) { // there is an accepted mate?
             for (int child=0; child<F; ++child) {
                 // recombine from both parents
@@ -301,7 +299,7 @@ std::vector<int> Population::findDads() {
     std::vector<int> dads(n,-1);
     if (theMatingType == Selfing) {
         for (int mom=0; mom<n; ++mom) {
-            dads.at(mom) = mom;
+            dads[mom] = mom;
         }
     } else if (withinPatchMating) {
         DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(getSpace());
@@ -318,19 +316,19 @@ std::vector<int> Population::findDads() {
                 }
                 // Let each Mom choose from the local list
                 for (int momi=0; momi<local_n; ++momi) {
-                    int mom = indList.at(momi);
+                    int mom = indList[momi];
                     int trialCount = 0;
                     while (trialCount<mating_trials) {
                         // First find a possible candidate
                         int picked = (int)(rand1()*local_n);
-                        int candidate = indList.at(picked);
+                        int candidate = indList[picked];
                         // Next, let mom accept or reject according to her preferences
                         double Pchoose = 1;
                         for (Preference* pp : matingPreferenceList) {
                             Pchoose *= pp->getPartnerWeight(mom, candidate);
                         }
                         if (Pchoose==1 || rand1()<Pchoose) {
-                            dads.at(mom) = candidate;// acceptance!
+                            dads[mom] = candidate;// acceptance!
                             break;
                         }
                         ++trialCount; // rejection, try another mate
@@ -351,7 +349,7 @@ std::vector<int> Population::findDads() {
                     Pchoose *= pp->getPartnerWeight(mom, candidate);
                 }
                 if (Pchoose==1 || rand1()<Pchoose) {
-                    dads.at(mom) = candidate; // acceptance!
+                    dads[mom] = candidate; // acceptance!
                     break; // while loop
                 }
                 ++trialCount; // rejection, try another mate
@@ -368,7 +366,7 @@ std::vector<int> Population::findDads() {
                 // Calculate spatial filter weights:
                 for (int male=0; male<n; ++male) {
                     double dist2 = getSpace().getDist2(mom, male);
-                    space_weights.at(male) *= fexp.exp(-dist2/twoss2);
+                    space_weights[male] *= fexp.exp(-dist2/twoss2);
                 }
                 // calculate cumulative sum:
                 std::partial_sum(space_weights.begin(), space_weights.end(), space_weights.begin());
@@ -383,7 +381,7 @@ std::vector<int> Population::findDads() {
                         Pchoose *= pp->getPartnerWeight(mom, candidate);
                     }
                     if (Pchoose==1 || rand1()<Pchoose) {
-                        dads.at(mom) = candidate; // acceptance!
+                        dads[mom] = candidate; // acceptance!
                         break; // while loop
                     }
                     ++trialCount; // rejection, try another mate
@@ -410,7 +408,7 @@ std::vector<int> Population::findDads() {
                         Pchoose *= pp->getPartnerWeight(mom, candidate);
                     }
                     if (Pchoose==1 || rand1()<Pchoose) {
-                        dads.at(mom) = candidate; // acceptance!
+                        dads[mom] = candidate; // acceptance!
                         break; // while loop
                     }
                     ++trialCount; // rejection, try another mate
@@ -450,13 +448,12 @@ void Population::compactData(){
     // compact fitness:
     int iw = 0;
     for (int ir=0; ir<alive.size(); ++ir) {
-        if (alive.at(ir)) {
-            fitness.at(iw)=fitness.at(ir);
+        if (alive[ir]) {
+            fitness[iw]=fitness[ir];
             ++iw;
         }
     }
     n = iw;
-    fitness.resize(n);
     alive.assign(n, true);
     somebodyDied = false;
 }

@@ -50,7 +50,7 @@ StabilizingSelection::~StabilizingSelection() {}
 void StabilizingSelection::aggregateFitness(std::vector<double>& fitness) {
     //double* fi = &fitness[0];
     for (int i=0; i<pop.size(); ++i) {
-        if (fitness.at(i)>0) {
+        if (fitness[i]>0) {
             double dzsum = 0;
             for (int d=0; d<zTrait->getDims(); ++d) {
                 double z = zTrait->traitValue(i,d);
@@ -59,7 +59,7 @@ void StabilizingSelection::aggregateFitness(std::vector<double>& fitness) {
             if(cost_exponent!=2) {
                 dzsum = fastabspow(dzsum,cost_exponent/2);
             }
-            fitness.at(i) *= std::max(0.0,(1-cost_coefficient*dzsum));
+            fitness[i] *= std::max(0.0,(1-cost_coefficient*dzsum));
         }
     }
 }
@@ -82,21 +82,20 @@ Fitness(pop) {
 DensityDependence::~DensityDependence() {}
 
 void DensityDependence::aggregateFitness(std::vector<double>& fitness) {
-    
+
     Fastexp fexp; // Object for fast exponential function
-    
+
     // Adjust density dependece for F:
     double KF = K*pop.getF();
-    int Dims = pop.getSpace().getDims();
     
     // NullSpace case:
-    if (Dims==0) {
+    if (pop.getSpace().getDims()==0) {
         int n = pop.size();
         for (int i=0; i<n; ++i) {
-            fitness.at(i) *= fexp.exp( r*(1.0 - n/KF) );
+            fitness[i] *= fexp.exp( r*(1.0 - n/KF) );
         }
         
-        // Within patch case:
+    // Within patch case:
     } else if (pop.getSpace().isDiscrete() && s_space==0) {
         DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(pop.getSpace());
         int n = pop.size();
@@ -104,91 +103,27 @@ void DensityDependence::aggregateFitness(std::vector<double>& fitness) {
         // Vector of local patch densities (linear indexing):
         std::vector<int> N(theSpace.getPatchCount(), 0);
         for (int i=0; i<n; ++i) {
-            N.at(theSpace.getLinearPatch(i)) += 1;
+            N[theSpace.getLinearPatch(i)] += 1;
         }
         for (int i=0; i<n; ++i) {
-            fitness.at(i) *= fexp.exp( r*(1.0 - N.at(theSpace.getLinearPatch(i))/KF) );
+            fitness[i] *= fexp.exp( r*(1.0 - N[theSpace.getLinearPatch(i)]/KF) );
         }
         
-        // General discrete case:
-    } else if (pop.getSpace().isDiscrete()){
-        DiscreteSpaceImp& theSpace = dynamic_cast<DiscreteSpaceImp&>(pop.getSpace());
-        double ss2 = s_space*s_space*2.0;
-        double ss2mul14 = ss2*14.0;
-        for (int i=0; i<pop.size(); ++i) {
-            int* iPatch = &theSpace.getPatch(i,0);
-            double Neff = 0; // efficient number of competitors
-            int* ciPatch = &theSpace.getPatch(0,0);
-            for (int ci=0; ci<pop.size(); ++ci) {
-                int d2exp = 0;
-                for (int di=0; di<Dims; ++di) {
-                    int dx = *(iPatch+di) - *(ciPatch+di);
-                    d2exp += dx*dx;
-                }
-                if (d2exp < ss2mul14) { // exclude contributions smaller than 1e-6
-                    Neff += fexp.exp(-d2exp/ss2);
-                }
-                ciPatch += Dims;
-            }
-            fitness.at(i) *= fexp.exp( r*(1.0 - Neff/KF) );
-        }
-        
-        // General case, continuous space:
+    // General case:
     } else {
-        ContinuousSpace& theSpace = dynamic_cast<ContinuousSpace&>(pop.getSpace());
-        double ss2 = s_space*s_space*2.0;
-        double ss2mul14 = ss2*14.0;
-        if (Dims==1) {
-            for (int i=0; i<pop.size(); ++i) {
-                double iPos = theSpace.getCoord(i,0);
-                double Neff = 0; // efficient number of competitors
-                double* ciPos = &theSpace.getCoord(0,0);
-                for (int ci=0; ci<pop.size(); ++ci) {
-                    double dx = iPos - *ciPos;
-                    double d2exp = dx*dx;
-                    if (d2exp < ss2mul14) { // exclude contributions smaller than 1e-6
-                        Neff += fexp.exp(-d2exp/ss2);
-                    }
-                    ++ciPos;
+        double ss2 = s_space*s_space;
+        for (int i=0; i<pop.size(); ++i) {
+            double Neff = 0; // efficient number of competitors
+            for (int ci=0; ci<pop.size(); ++ci) {
+                double d2exp = pop.getSpace().getDist2(i, ci) / ss2 / 2;
+                if (d2exp < 14) { // exclude contributions smaller than 1e-6
+                    Neff += fexp.exp(-d2exp);
                 }
-                fitness.at(i) *= fexp.exp( r*(1.0 - Neff/KF) );
             }
-        } else {
-            for (int i=0; i<pop.size(); ++i) {
-                double* iPos = &theSpace.getCoord(i,0);
-                double Neff = 0; // efficient number of competitors
-                double* ciPos = &theSpace.getCoord(0,0);
-                for (int ci=0; ci<pop.size(); ++ci) {
-                    double d2exp = 0;
-                    for (int di=0; di<Dims; ++di) {
-                        double dx = *(iPos+di) - *(ciPos+di);
-                        d2exp += dx*dx;
-                    }
-                    if (d2exp < ss2mul14) { // exclude contributions smaller than 1e-6
-                        Neff += fexp.exp(-d2exp/ss2);
-                    }
-                    ciPos += Dims;
-                }
-                fitness.at(i) *= fexp.exp( r*(1.0 - Neff/KF) );
-            }
+            fitness[i] *= fexp.exp( r*(1.0 - Neff/KF) );
         }
     }
-    
-    
-    
-    /*       double ss2 = s_space*s_space;
-     for (int i=0; i<pop.size(); ++i) {
-     double Neff = 0; // efficient number of competitors
-     for (int ci=0; ci<pop.size(); ++ci) {
-     double d2exp = pop.getSpace().getDist2(i, ci) / ss2 / 2;
-     if (d2exp < 14) { // exclude contributions smaller than 1e-6
-     Neff += fexp.exp(-d2exp);
-     }
-     }
-     fitness[i] *= fexp.exp( r*(1.0 - Neff/KF) );
-     }*/
 }
-
 
 ResourceLandscape::ResourceLandscape(Population& pop, ParameterFile& pf) :
 Fitness(pop)
@@ -236,110 +171,110 @@ double ResourceLandscape::getTraitDist2( int ind1, int ind2) { // squared distan
 
 
 void ResourceLandscape::aggregateFitness(std::vector<double>& fitness)
-{
-    double twosa2 = 2*sa*sa;
-    int n = pop.size();
-    int xdims = xTrait->getDims();
-    int sdims = pop.getSpace().getDims();
-    
-    std::vector<double> comp;
-    comp.assign(n, 0); // vector of efficient competition, one per individual
-    Fastexp fexp;
-    
-    // Calculate effective competition
-    if (xdims==1 && sdims==0) {
-        // Special case 1: 1D trait, no space
-        for (int i=0; i<n; ++i) {
-            double compi = comp.at(i);
-            // self competition:
-            compi += 1;
-            if (i<n-1) {
-                double ix = getX(i);
-                // This is a loop of complexity n^2. Use efficient iterators.
-                double* xcip = &getX(i+1);
-                double* compcip = &comp.at(i+1);
-                for (int ci=i+1; ci<n; ++ci) {
-                    double xdiff = ix - *xcip;
-                    double c = fexp.exp(-xdiff*xdiff/twosa2 );
-                    compi += c;
-                    *compcip += c;
-                    ++compcip;
-                    ++xcip;
-                }
-            }
-            comp.at(i) = compi;
-        }
-        for (int i=0; i<n; ++i) {
-            double ix = getX(i);
-            double iKF = K0*fexp.exp(-ix*ix/2/sK/sK) * pop.getF(); // adjustment such that K is carrying capacity AFTER selection
-            fitness.at(i) *= std::max(0.0,1 + r*(1-comp.at(i)/iKF));
-        }
-        return;
-    } else if (pop.getSpace().isDiscrete() && s_space==0) {
-        // Special case 2: within patch competition
-        DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(pop.getSpace());
-        for (int i=0; i<n; ++i) {
-            double compi = comp.at(i);
-            int patchi = theSpace.getLinearPatch(i);
-            // self competition:
-            compi += 1;
-            if (i<n-1) {
-                double* compcip = &comp.at(i+1);// pointer to competitor's comp-value
-                for (int ci=i+1; ci<n; ++ci) {
-                    if (theSpace.getLinearPatch(ci) == patchi) {
-                        double x2sum = getTraitDist2(i, ci);
-                        double c = fexp.exp(-x2sum/twosa2 );
-                        compi += c;
-                        *compcip += c;
-                    }
-                    ++compcip;
-                }
-            }
-            comp.at(i) = compi;
-        }
-    }
-    else { // general case
-        double twoss2 = 2*s_space*s_space;
-        for (int i=0; i<n; ++i) {
-            double compi = comp.at(i);
-            // self competition:
-            compi += 1;
-            if (i<n-1) {
-                for (int ci=i+1; ci<n; ++ci) {
-                    double dist2 = pop.getSpace().getDist2(i, ci);
-                    double x2sum = getTraitDist2(i, ci);
-                    double c = fexp.exp(-x2sum/twosa2 - dist2/twoss2);
-                    compi += c;
-                    comp.at(ci) += c;
-                }
-            }
-            comp.at(i) = compi;
-        }
-    }
-    if (xdims==1) {
-        double *xip = &getX(0,0);
-        for (int i=0; i<n; ++i) {
-            double xopt = k_space*pop.getSpace().getPosition(i, 0);
-            double dx = *xip - xopt;
-            double iKF = K0*fexp.exp(-dx*dx/2/sK/sK) * pop.getF(); // adjustment such that K is carrying capacity AFTER selection
-            fitness.at(i) *= std::max(0.0,1 + r*(1-comp.at(i)/iKF));
-            ++xip;
-        }
-    } else {
-        double *xip = &getX(0,0);
-        for (int i=0; i<n; ++i) {
-            double xopt = k_space*pop.getSpace().getPosition(i, 0);
-            double dx2 = 0;
-            for (int d=0; d<xdims; ++d) {
-                double dx = *xip - xopt;
-                dx2 += dx*dx;
-                ++xip;
-            }
-            //double ix = getX(i) - k_space*pop.getSpace().getPosition(i, 0);
-            double iKF = K0*fexp.exp(-dx2/2/sK/sK) * pop.getF(); // adjustment such that K is carrying capacity AFTER selection
-            fitness.at(i) *= std::max(0.0,1 + r*(1-comp.at(i)/iKF));
-        }
-    }
+ {
+     double twosa2 = 2*sa*sa;
+     int n = pop.size();
+     int xdims = xTrait->getDims();
+     int sdims = pop.getSpace().getDims();
+
+     std::vector<double> comp;
+     comp.assign(n, 0); // vector of efficient competition, one per individual
+     Fastexp fexp;
+     
+     // Calculate effective competition
+     if (xdims==1 && sdims==0) {
+         // Special case 1: 1D trait, no space
+         for (int i=0; i<n; ++i) {
+             double compi = comp.at(i);
+             // self competition:
+             compi += 1;
+             if (i<n-1) {
+                 double ix = getX(i);
+                 // This is a loop of complexity n^2. Use efficient iterators.
+                 double* xcip = &getX(i+1);
+                 double* compcip = &comp.at(i+1);
+                 for (int ci=i+1; ci<n; ++ci) {
+                     double xdiff = ix - *xcip;
+                     double c = fexp.exp(-xdiff*xdiff/twosa2 );
+                     compi += c;
+                     *compcip += c;
+                     ++compcip;
+                     ++xcip;
+                 }
+             }
+             comp.at(i) = compi;
+         }
+         for (int i=0; i<n; ++i) {
+             double ix = getX(i);
+             double iKF = K0*fexp.exp(-ix*ix/2/sK/sK) * pop.getF(); // adjustment such that K is carrying capacity AFTER selection
+             fitness.at(i) *= std::max(0.0,1 + r*(1-comp.at(i)/iKF));
+         }
+         return;
+     } else if (pop.getSpace().isDiscrete() && s_space==0) {
+         // Special case 2: within patch competition
+         DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(pop.getSpace());
+         for (int i=0; i<n; ++i) {
+             double compi = comp.at(i);
+             int patchi = theSpace.getLinearPatch(i);
+             // self competition:
+             compi += 1;
+             if (i<n-1) {
+                 double* compcip = &comp.at(i+1);// pointer to competitor's comp-value
+                 for (int ci=i+1; ci<n; ++ci) {
+                     if (theSpace.getLinearPatch(ci) == patchi) {
+                         double x2sum = getTraitDist2(i, ci);
+                         double c = fexp.exp(-x2sum/twosa2 );
+                         compi += c;
+                         *compcip += c;
+                     }
+                     ++compcip;
+                 }
+             }
+             comp.at(i) = compi;
+         }
+     }
+     else { // general case
+         double twoss2 = 2*s_space*s_space;
+         for (int i=0; i<n; ++i) {
+             double compi = comp.at(i);
+             // self competition:
+             compi += 1;
+             if (i<n-1) {
+                 for (int ci=i+1; ci<n; ++ci) {
+                     double dist2 = pop.getSpace().getDist2(i, ci);
+                     double x2sum = getTraitDist2(i, ci);
+                     double c = fexp.exp(-x2sum/twosa2 - dist2/twoss2);
+                     compi += c;
+                     comp.at(ci) += c;
+                 }
+             }
+             comp.at(i) = compi;
+         }
+     }
+     if (xdims==1) {
+         double *xip = &getX(0,0);
+         for (int i=0; i<n; ++i) {
+             double xopt = k_space*pop.getSpace().getPosition(i, 0);
+             double dx = *xip - xopt;
+             double iKF = K0*fexp.exp(-dx*dx/2/sK/sK) * pop.getF(); // adjustment such that K is carrying capacity AFTER selection
+             fitness.at(i) *= std::max(0.0,1 + r*(1-comp.at(i)/iKF));
+             ++xip;
+         }
+     } else {
+         double *xip = &getX(0,0);
+         for (int i=0; i<n; ++i) {
+             double xopt = k_space*pop.getSpace().getPosition(i, 0);
+             double dx2 = 0;
+             for (int d=0; d<xdims; ++d) {
+                 double dx = *xip - xopt;
+                 dx2 += dx*dx;
+                 ++xip;
+             }
+             //double ix = getX(i) - k_space*pop.getSpace().getPosition(i, 0);
+             double iKF = K0*fexp.exp(-dx2/2/sK/sK) * pop.getF(); // adjustment such that K is carrying capacity AFTER selection
+             fitness.at(i) *= std::max(0.0,1 + r*(1-comp.at(i)/iKF));
+         }
+     }
 }
 
 
@@ -379,14 +314,14 @@ void DiscreteResources::aggregateFitness(std::vector<double>& fitness) {
             double consumption = 0;
             for (int i=0; i<pop.size(); ++i) {
                 double dx = getX(i) - ri;
-                a.at(i) = a0 * fexp.exp(-ta*dx*dx/2.0) / K;
-                consumption += a.at(i); // should be divided by F. Adjusted outside loop.
+                a[i] = a0 * fexp.exp(-ta*dx*dx/2.0) / K;
+                consumption += a[i]; // should be divided by F. Adjusted outside loop.
             }
             consumption /= pop.getF(); // adjust consumer density for F.
             // Resource abundance:
             double R = K/(1 + consumption);
             for (int i=0; i<pop.size(); ++i) {
-                intake.at(i) += a.at(i)*R;
+                intake[i] += a[i]*R;
             }
         }
     } else { // we can assume discrete space
@@ -397,8 +332,8 @@ void DiscreteResources::aggregateFitness(std::vector<double>& fitness) {
                 for (int i=0; i<pop.size(); ++i) {
                     if( theSpace.getLinearPatch(i) == patchi ) {
                         double dx = getX(i) - ri;
-                        a.at(i) = a0*fexp.exp(-ta*dx*dx/2.0) / K;
-                        consumption += a.at(i); // should be divided by F. Adjusted outside loop.
+                        a[i] = a0*fexp.exp(-ta*dx*dx/2.0) / K;
+                        consumption += a[i]; // should be divided by F. Adjusted outside loop.
                     }
                 }
                 consumption /= pop.getF(); // adjust consumer density for F.
@@ -406,15 +341,15 @@ void DiscreteResources::aggregateFitness(std::vector<double>& fitness) {
                 double R = K/(1 + consumption);
                 for (int i=0; i<pop.size(); ++i) {
                     if( theSpace.getLinearPatch(i) == patchi ) {
-                        intake.at(i) += a.at(i)*R;
+                        intake[i] += a[i]*R;
                     }
                 }
             }
         }
     }
-    
+
     for (int i=0; i<pop.size(); ++i) {
-        fitness.at(i) *= std::max(0.0, 1 + intake.at(i) - cmin);
+        fitness[i] *= std::max(0.0, 1 + intake[i] - cmin);
     }
 }
 
@@ -440,7 +375,7 @@ void SpatialGradient::aggregateFitness(std::vector<double>& fitness) {
     for (int i=0; i<pop.size(); ++i) {
         // adaptation in first dimension only:
         double dx = xTrait->traitValue(i,0) - ks*pop.getSpace().getPosition(i,0);
-        fitness.at(i) *= fexp.exp(-ts*dx*dx/2.0);
+        fitness[i] *= fexp.exp(-ts*dx*dx/2.0);
     }
 }
 
@@ -461,7 +396,7 @@ Catastrophe::~Catastrophe() {}
 void Catastrophe::aggregateFitness(std::vector<double>& fitness) {
     if (rand1()<Pcat) {
         for (int i=0; i<pop.size(); ++i) {
-            fitness.at(i) *= Psurv;
+            fitness[i] *= Psurv;
         }
     }
 }

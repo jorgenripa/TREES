@@ -98,8 +98,6 @@ void Simulation::runAndSave(int replicate) {
                 double nowSec = getNow()-t1;
                 int timeLeft = int( (nowSec-prevSec)*(tmax-t)/sampleInterval );
                 std::cout << "Time " << time2str(int(nowSec)) << ", time left : " << time2str(timeLeft) << "\n";
-                // For debugging:
-                //std::cout << get_rand_count() << '\n';
                 prevSec = nowSec;
             }
         }

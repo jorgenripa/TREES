@@ -46,25 +46,17 @@ unsigned randomize()
     return micros;
 }
 
-// unsigned long rand_count;
-
 void randseed(unsigned seed) {
     srand(seed);
     std::cout << "Randseed set : " << seed << '\n';
-//    rand_count = 0;
 }
 
 double rand1() // uniform [0,1)
 {
     int r = rand();
     double C = int64_t(RAND_MAX)+1.0; // RAND_MAX is 2^31 in OS-X 10.9.5
-//    ++rand_count;
     return r / C;//double(RAND_MAX+1);
 }
-
-/*unsigned long get_rand_count() {
-    return rand_count;
-}*/
 
 double randn() {
     static bool iset = false;

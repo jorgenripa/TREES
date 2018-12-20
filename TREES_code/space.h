@@ -89,7 +89,7 @@ protected:
     std::vector<int> newPatches;
     std::vector<int> patchPopSizes;
     std::vector<int> linearPatches;
-    timeType generationLastCount;
+    int generationLastCount;
     int length; // size of space = length^Dims
     int initialPatch; // starting patch for all individuals (in all dimensions)
     Trait* PDisp;
@@ -117,7 +117,7 @@ protected:
 public:
     DiscreteSpaceImp(Population& p, ParameterFile& pf);
     virtual ~DiscreteSpaceImp();
-    int& getPatch(int individual, int dim) {return patches.at(individual*Dims + dim);}
+    int& getPatch(int individual, int dim) {return patches[individual*Dims + dim];}
     // DiscreteSpace interface:
     virtual int getLinearPatch(int individual);
     virtual int popSizeInPatch(int linearPatch);
@@ -157,12 +157,6 @@ public:
     virtual double getDist2(int ind1, int ind2); // squared distance
 };
 
-/*class CSIterator {
-public:
-    double* ppos;
-    int dims;
-    CSIterator& operator ++() { ppos += dims; return *this; }
-};*/
 
 class ContinuousSpace : public Space {
 protected:

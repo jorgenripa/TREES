@@ -73,7 +73,6 @@ public:
     virtual double getGeneSum(int individual, int startlocus, int endlocus)=0; // endlocus is exclusive!
     virtual void compactData(std::vector<bool>& alive);
     virtual void addToSample(Sample& s)=0;
-    virtual void checkGenes()=0;
 
     void addGeneIDsToSample(Sample& s);
     int getLoci() { return loci;}
@@ -96,7 +95,6 @@ public:
     virtual double getGeneSum(int individual, int startlocus, int endlocus); // endlocus is exclusive!
     virtual void compactData(std::vector<bool>& alive);
     virtual void addToSample(Sample& s);
-    virtual void checkGenes();
 
 protected:
     virtual double getEffect1(int individual, int locus);
@@ -144,10 +142,6 @@ protected:
         return G2.at(individual*loci + locus);
     }
     void produceGamete(int parent, int targetHaplo);
-    // Debugging:
-    virtual void checkGenes();
-    void checkChild(int ci, int haplo);
-    void checkAllChildren();
 };
 
 #endif /* defined(__Species__genetics__) */

@@ -23,7 +23,6 @@
 #include <cmath>
 #include <iostream>
 #include <string.h>
-#include <cassert>
 #include "stdlib.h"
 
 #include "genetics.h"
@@ -90,7 +89,7 @@ void Genetics::addGeneIDsToSample(Sample& s) {
     // find all current alleles in population,
     // mark them and their ancestors as sampled:
     for (int li=0; li<loci; ++li) {
-        GeneList& list = geneLists.at(li);
+        GeneList& list = geneLists[li];
         for (int i=0; i<pop.size(); ++i) {
             idType id = getGene1id(i, li);
             Gene* gp = &list.getGene(id);
@@ -111,7 +110,7 @@ void Genetics::addGeneIDsToSample(Sample& s) {
 void Genetics::pruneGeneLists() {
     // remove all alleles that are not present in the population, have no present descendents, and have never been sampled
     for(int li=0; li<loci; ++li) {
-        GeneList& list = geneLists.at(li);
+        GeneList& list = geneLists[li];
         std::vector<bool> alive;
         alive.assign(list.size(), false);
         // find all current alleles in population:
@@ -124,19 +123,19 @@ void Genetics::pruneGeneLists() {
         }
         // assign deathtime to recently extinct alleles:
         for (int ai=0; ai<list.size(); ++ai) {
-            if (!alive.at(ai) && list.at(ai).deathTime==-1) {
-                list.at(ai).deathTime = pop.getAge();
+            if (!alive[ai] && list[ai].deathTime==-1) {
+                list[ai].deathTime = pop.getAge();
             }
         }
         // make sure their ancestors are not removed:
         for (int ai=0; ai<list.size(); ++ai) {
-            if (alive.at(ai)) {
-                idType parent = list.at(ai).parent;
+            if (alive[ai]) {
+                idType parent = list[ai].parent;
                 while (parent>0) {
                     int parent_i = list.getGeneIndex(parent);
                     if (!alive.at(parent_i)) {
-                        alive.at(parent_i) = true;
-                        parent = list.at(parent_i).parent;
+                        alive[parent_i] = true;
+                        parent = list[parent_i].parent;
                     } else {
                         parent = 0; // no need to track further back
                     }
@@ -278,7 +277,7 @@ void ContinuousAlleles::produceGamete(int parent, int targetHaplo) {
         while (rand1() < P_At_least_one_mut) {
             int mutlocus = rand1()*loci;
             target[mutlocus] += doubleExp(1); // mutations are always of mean size=1
-            idTarget[mutlocus] = geneLists.at(mutlocus).addGene(idTarget[mutlocus], pop.getAge(), target[mutlocus]);
+            idTarget[mutlocus] = geneLists[mutlocus].addGene(idTarget[mutlocus], pop.getAge(), target[mutlocus]);
             //assert(nG[mutlocus]>-1 && nG[mutlocus]<1);
         }
     } else { // no gene tracking
@@ -338,13 +337,13 @@ void ContinuousAlleles::compactData(std::vector<bool>& alive) {
     for (iread=0; iread<pop.size(); ++iread) {
         if (alive.at(iread)) {
             if(iread>iwrite) {
- //               memcpy(&getGene1(iwrite, 0), &getGene1(iread, 0), loci*sizeof(G1[0]));
- //               memcpy(&getGene2(iwrite, 0), &getGene2(iread, 0), loci*sizeof(G1[0]));
-                for (int a=0; a<loci; ++a) {
+                memcpy(&getGene1(iwrite, 0), &getGene1(iread, 0), loci*sizeof(G1[0]));
+                memcpy(&getGene2(iwrite, 0), &getGene2(iread, 0), loci*sizeof(G1[0]));
+/*                for (int a=0; a<loci; ++a) {
                     getGene1(iwrite,a) = getGene1(iread,a);
                     getGene2(iwrite,a) = getGene2(iread,a);
                 }
- 
+ */
             }
             ++iwrite;
         }
@@ -358,17 +357,6 @@ void ContinuousAlleles::addToSample(Sample& s) {
     s.addData(new FloatData(G2));
 }
 
-// for debugging:
-void ContinuousAlleles::checkGenes() {
-/*    for (int i=0; i<pop.size(); ++i) {
-        for (int a=0; a<loci; ++a) {
-            int g1 = getGene1(i, a);
-            assert(g1==-1 || g1==1);
-            int g2 = getGene2(i, a);
-            assert(g2==-1 || g2==1);
-        }
-    }*/
-}
 
 ////////////////////////////////
 
@@ -428,11 +416,10 @@ void Diallelic::prepareNewGeneration(int size) {
 
 void Diallelic::nextGeneration() {
     Genetics::nextGeneration(); // deal with gene tracking
-    newG1.resize(newCount*loci); // some matings may have failed
-    newG2.resize(newCount*loci); 
-    G1.swap(newG1);
-    G2.swap(newG2);
-    checkGenes();
+    newG1.resize(newCount*loci); // some matings may fail
+    newG2.resize(newCount*loci); // some matings may fail
+    G1 = newG1;
+    G2 = newG2;
     newG1.clear();
     newG2.clear();
 }
@@ -441,7 +428,6 @@ void Diallelic::addChild(int mom, int dad) {
     produceGamete(mom,1);
     produceGamete(dad,2);
     ++newCount;
-    //checkAllChildren();
 }
 
 void Diallelic::produceGamete(int parent, int targetHaplo) {
@@ -481,7 +467,7 @@ void Diallelic::produceGamete(int parent, int targetHaplo) {
         while (rand1() < P_At_least_one_mut) {
             int mutlocus = rand1()*loci;
             target[mutlocus] = -target[mutlocus]; // mutations are always of mean size=1
-            idTarget[mutlocus] = geneLists.at(mutlocus).addGene(idTarget[mutlocus], pop.getAge(), target[mutlocus]);
+            idTarget[mutlocus] = geneLists[mutlocus].addGene(idTarget[mutlocus], pop.getAge(), target[mutlocus]);
         }
     } else { // no gene tracking
         int* g1 = &getGene1(parent,0);
@@ -502,7 +488,6 @@ void Diallelic::produceGamete(int parent, int targetHaplo) {
             } else {
                 *target_it = g2[a];
             }
-            assert(*target_it==-1 || *target_it==1);
             ++target_it;
             if( bG.nextBit()){
                 haplo = 3 - haplo; // changes 1 to 2 and vice versa
@@ -513,7 +498,7 @@ void Diallelic::produceGamete(int parent, int targetHaplo) {
             int mutlocus = rand1()*loci;
             target[mutlocus] = -target[mutlocus];
         }
-        //checkChild(newCount, targetHaplo);
+        
     }
 }
 
@@ -538,69 +523,17 @@ void Diallelic::compactData(std::vector<bool>& alive) {
     for (iread=0; iread<pop.size(); ++iread) {
         if (alive.at(iread)) {
             if(iread>iwrite) {
-//                memcpy(&getGene1(iwrite, 0), &getGene1(iread, 0), loci*sizeof(G1[0]));
-//                memcpy(&getGene2(iwrite, 0), &getGene2(iread, 0), loci*sizeof(G1[0]));
-                for (int a=0; a<loci; ++a) {
-                    getGene1(iwrite,a) = getGene1(iread,a);
-                    getGene2(iwrite,a) = getGene2(iread,a);
-                }
+                memcpy(&getGene1(iwrite, 0), &getGene1(iread, 0), loci*sizeof(G1[0]));
+                memcpy(&getGene2(iwrite, 0), &getGene2(iread, 0), loci*sizeof(G1[0]));
             }
             ++iwrite;
         }
     }
     G1.resize(iwrite*loci);
     G2.resize(iwrite*loci);
-    // debugging:
-    //checkGenes();
 }
 
 void Diallelic::addToSample(Sample& s) {
     s.addData(new IntData(G1));
     s.addData(new IntData(G2));
-}
-
-// for debugging:
-void Diallelic::checkGenes() {
-    for (int i=0; i<pop.size(); ++i) {
-        for (int a=0; a<loci; ++a) {
-            int g1 = getGene1(i, a);
-            if (!(g1==-1 || g1==1)) {
-                std::cout << "Gene 1 error : " << '[' << i << ',' << a << "] = " << G1.at(i*loci+a)  << '\n';
-                //std::cout << "From new gene : " << '[' << i << ',' << a << "] = " << newG1.at(i*loci+a) << '\n';
-                assert(g1==-1 || g1==1);
-            }
-            int g2 = getGene2(i, a);
-            if (!(g2==-1 || g2==1)) {
-                std::cout << "Gene 2 error : " << '[' << i << ',' << a << "] = " << G2.at(i*loci+a)  << '\n';
-                //std::cout << "From new gene : " << '[' << i << ',' << a << "] = " << newG2.at(i*loci+a) << '\n';
-                assert( g2==-1 || g2==1);
-            }
-        }
-    }
-}
-
-void Diallelic::checkChild(int ci, int haplo) {
-    for (int a=0; a<loci; ++a) {
-        int g;
-        if (haplo==1) {
-            g = newG1.at(ci*loci+a);
-        }else if (haplo==2) {
-            g = newG2.at(ci*loci+a);
-        }else {
-            std::cout << "Error haplo\n";
-            exit(0);
-        }
-        assert(g==-1 || g==1);
-    }
-}
-
-void Diallelic::checkAllChildren() {
-    for (int ci=0; ci<newCount; ++ci) {
-        for (int a=0; a<loci; ++a) {
-            int g1 = newG1.at(ci*loci+a);
-            assert(g1==-1 || g1==1);
-            int g2 = newG2.at(ci*loci+a);
-            assert(g2==-1 || g2==1);
-        }
-    }
 }
