@@ -1,0 +1,19 @@
+verbose : Y
+t_max : 12
+sample_interval : 1
+checkpoint_interval : 2
+seed : 1
+gene_tracking : Y
+gene_sampling : Y
+F : 2
+n_0 : 5
+
+Genetics : Continuous_Alleles, P_mutation : 0.1
+#Genetics : Diallelic, P_mutation : 0.1
+
+Trait : X1, dimensions: 1, loci_per_dim: 1, initial_value: 0
+
+Fitness : Density_dependence, r : 1, K : 10, s_space : 1
+
+Mating_pool : Local, s_space : 1
+Mating_trials : 10000
