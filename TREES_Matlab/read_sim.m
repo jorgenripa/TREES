@@ -40,6 +40,7 @@ sim.t_max = readPar(fid,'t_max');
 sim.sample_interval = readPar(fid,'sample_interval');
 if file_version >= 2
     sim.checkpoint_interval = readPar(fid,'checkpoint_interval');
+    sim.keep_old_checkpoints = readPar(fid,'keep_old_checkpoints');
 end
 seed2 = readPar(fid,'seed');
 %if seed2 ~= sim.seed
