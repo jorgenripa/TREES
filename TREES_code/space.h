@@ -55,6 +55,8 @@ public:
     virtual void addChild(int mom, int dad)=0;
     virtual void compactData(std::vector<bool>& alive)=0;
     virtual void addToSample(Sample& theSample)=0;
+    virtual void readToSample(Sample& theSample, iSimfile& isf, int n)=0;
+    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex)=0;
     virtual double getPosition(int individual, int dimension)=0;
     virtual double getDist2(int ind1, int ind2)=0; // squared distance
     virtual bool isDiscrete()=0;
@@ -77,6 +79,8 @@ public:
     virtual void addChild(int mom, int dad)=0;
     virtual void compactData(std::vector<bool>& alive)=0;
     virtual void addToSample(Sample& theSample)=0;
+    virtual void readToSample(Sample& theSample, iSimfile& isf, int n)=0;
+    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex)=0;
     virtual double getPosition(int individual, int dim)=0;
     virtual double getDist2(int ind1, int ind2)=0; // squared distance
     virtual bool isDiscrete();
@@ -89,7 +93,7 @@ protected:
     std::vector<int> newPatches;
     std::vector<int> patchPopSizes;
     std::vector<int> linearPatches;
-    int generationLastCount;
+    timeType generationLastCount;
     int length; // size of space = length^Dims
     int initialPatch; // starting patch for all individuals (in all dimensions)
     Trait* PDisp;
@@ -114,6 +118,8 @@ protected:
             return dx;
         }
     }
+    int calcLinearPatch(int individual);
+    void assignLinearPatches();
 public:
     DiscreteSpaceImp(Population& p, ParameterFile& pf);
     virtual ~DiscreteSpaceImp();
@@ -130,6 +136,8 @@ public:
     virtual void addChild(int mom, int dad);
     virtual void compactData(std::vector<bool>& alive);
     virtual void addToSample(Sample& theSample);
+    virtual void readToSample(Sample& theSample, iSimfile& isf, int n);
+    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex);
     virtual double getPosition(int individual, int dim);
     virtual double getDist2(int ind1, int ind2); // squared distance
 };
@@ -153,6 +161,8 @@ public:
     virtual void addChild(int mom, int dad);
     virtual void compactData(std::vector<bool>& alive);
     virtual void addToSample(Sample& theSample);
+    virtual void readToSample(Sample& theSample, iSimfile& isf, int n);
+    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex);
     virtual double getPosition(int individual, int dimension);
     virtual double getDist2(int ind1, int ind2); // squared distance
 };
@@ -160,18 +170,19 @@ public:
 
 class ContinuousSpace : public Space {
 protected:
-    std::vector<double> pos;
-    std::vector<double> newPos;
+    typedef float positionType;
+    std::vector<positionType> pos;
+    std::vector<positionType> newPos;
     double initialPosition;  // starting position for all individuals (in all dimensions)
     Trait* PDisp;
-    double dispdist; // mean dispersal distance
-    double maxPos; // size in each dimension
+    positionType dispdist; // mean dispersal distance
+    positionType maxPos; // size in each dimension
     enum Boundary {Circular, Reflective, Absorbing};
     Boundary boundaryCondition;
-    double treatBoundaries(double pos, int individual);
+    positionType treatBoundaries(positionType pos, int individual);
     // inline for speed, may be negative:
-    inline double getDistance(double pos1, double pos2) {
-        double dx = pos1-pos2;
+    inline positionType getDistance(positionType pos1, positionType pos2) {
+        positionType dx = pos1-pos2;
         if (boundaryCondition==Circular) {
             if (dx>maxPos/2) {
                 return maxPos-dx;
@@ -187,7 +198,7 @@ public:
     ContinuousSpace(Population& p, ParameterFile& pf);
     virtual ~ContinuousSpace();
     virtual double getPosition(int individual, int dim);
-    double& getCoord(int individual, int dim); // position with reference
+    positionType& getCoord(int individual, int dim); // position with reference
     virtual void initialize(int n0);
     virtual void disperse();
     virtual void prepareNewGeneration(int size);
@@ -195,6 +206,8 @@ public:
     virtual void addChild(int mom, int dad);
     virtual void compactData(std::vector<bool>& alive);
     virtual void addToSample(Sample& theSample);
+    virtual void readToSample(Sample& theSample, iSimfile& isf, int n);
+    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex);
     virtual double getDist2(int ind1, int ind2); // squared distance
     virtual bool isDiscrete();
 };

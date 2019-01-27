@@ -36,6 +36,7 @@
 // and simulation output (samples).
 // It runs the simulation through a simple for-loop over time and
 // eventually saves all parameters and population samples to a 'sim'-file.
+// Checkpoints, if activated, are saved to the same file.
 ///////////////////////////////////////////////
 class Simulation {
 protected:
@@ -43,15 +44,22 @@ protected:
     bool verbose;
     timeType tmax;
     timeType sampleInterval;
+    timeType checkpointInterval; // how often to save checkpoints
+    bool keepOldCheckpoints;
     std::string  simName;
+    std::string  resultsFileName;
     std::ostringstream  parameterFileCopy;
     Population* thePop;
     std::vector<Sample*> sampleList;
-    void save(int replicate);
-
+    std::vector<Checkpoint*> checkpointList;
+    void load(std::string& resultsFile);
+    void save();
+    void makeFileName(int replicate);
 public:
     Simulation(std::string& parameterFileName);
     ~Simulation();
-    void runAndSave(int iterations);
+    void initialize(int replicate);
+    void runFromGeneration(timeType gen);
+    void resume(std::string resultsFile, timeType gen, std::string newResultsFile);
 };
 #endif /* defined(__Species__simulation__) */

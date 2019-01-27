@@ -48,6 +48,8 @@ void NullSpace::nextGeneration() {}
 void NullSpace::addChild(int mom, int dad) {}
 void NullSpace::compactData(std::vector<bool>& alive) {}
 void NullSpace::addToSample(Sample& theSample) {}
+void NullSpace::readToSample(Sample& theSample, iSimfile& isf, int n) {};
+int NullSpace::resumeFromCheckpoint(Checkpoint& cp, int dataIndex) {return dataIndex; }
 double NullSpace::getPosition(int individual, int dim) { return 0.0; }
 double NullSpace::getDist2(int ind1, int ind2) {return 0.0;}
 
@@ -135,12 +137,12 @@ double DiscreteSpaceImp::getDist2(int ind1, int ind2) { // squared distance
 }
 
 int DiscreteSpaceImp::popSizeInPatch(int linearPatch) {
-    if ((int)pop.getAge()!=generationLastCount) {
+    if (pop.getAge()!=generationLastCount) {
         patchPopSizes.assign(getPatchCount(), 0);
         for (int i=0; i<pop.size(); ++i) {
             patchPopSizes.at(getLinearPatch(i)) += 1;
         }
-        generationLastCount = (int)pop.getAge();
+        generationLastCount = pop.getAge();
     }
     return patchPopSizes.at(linearPatch);
 }
@@ -149,15 +151,7 @@ int DiscreteSpaceImp::popSizeInPatch(int linearPatch) {
 void DiscreteSpaceImp::initialize(int n0) {
     // Put everyone in initialPatch
     patches.assign(n0*Dims, initialPatch);
-    if (Dims==1) {
-        linearPatches = patches;
-    } else {
-        int p = 0;
-        for (int d=0; d<Dims; ++d) {
-            p = length*p + initialPatch;
-        }
-        linearPatches.assign(patches.size(), p);
-    }
+    assignLinearPatches();
 }
 
 void DiscreteSpaceImp::disperse() {
@@ -203,9 +197,11 @@ void DiscreteSpaceImp::disperse() {
                     default:
                         break;
                 }
+                linearPatches[i] = calcLinearPatch(i);
             }
-        }
-    }
+        } // for (int i=0; i<pop.size(); ++i) {
+        //assignLinearPatches();
+    } // if (length>1)
 }
 
 int DiscreteSpaceImp::treatBoundaries(int pos, int individual) {
@@ -245,16 +241,24 @@ void DiscreteSpaceImp::prepareNewGeneration(int size) {
 
 void DiscreteSpaceImp::nextGeneration() {
     patches = newPatches;
+    assignLinearPatches();
+}
+
+int DiscreteSpaceImp::calcLinearPatch(int individual) {
+    int p = 0;
+    for (int d=0; d<Dims; ++d) {
+        p = length*p + getPatch(individual, d);
+    }
+    return p;
+}
+
+void DiscreteSpaceImp::assignLinearPatches() {
     if (Dims==1) {
         linearPatches = patches;
     } else {
         linearPatches.assign(patches.size(), 0);
         for (int i=0; i<patches.size(); ++i) {
-            int p = 0;
-            for (int d=0; d<Dims; ++d) {
-                p = length*p + getPatch(i, d);
-            }
-            linearPatches[i] = p;
+            linearPatches[i] = calcLinearPatch(i);
         }
     }
 }
@@ -283,9 +287,19 @@ void DiscreteSpaceImp::compactData(std::vector<bool>& alive) {
 
 void DiscreteSpaceImp::addToSample(Sample& theSample) {
     // add sample spatial position:
-    theSample.addData(new IntData(patches));
+    theSample.addData(new XData<int>(patches));
+}
+void DiscreteSpaceImp::readToSample(Sample& theSample, iSimfile& isf, int n) {
+    theSample.addData(new XData<int>(isf,n));
 }
 
+int DiscreteSpaceImp::resumeFromCheckpoint(Checkpoint &cp, int dataIndex) {
+    patches = (dynamic_cast<XData<int>&>(cp.getData(dataIndex++))).getData();
+    patchPopSizes.assign(getPatchCount(), 0);
+    generationLastCount = -1;
+    assignLinearPatches();
+    return dataIndex;
+}
 
 ContinuousSpace::ContinuousSpace(Population& p, ParameterFile& pf) :
 Space(p) {
@@ -322,7 +336,7 @@ ContinuousSpace::~ContinuousSpace() {
 
 bool ContinuousSpace::isDiscrete() { return false; }
 
-double& ContinuousSpace::getCoord(int indiviudal, int dim) {
+ContinuousSpace::positionType& ContinuousSpace::getCoord(int indiviudal, int dim) {
     return pos[indiviudal*Dims + dim];
 }
 
@@ -335,9 +349,9 @@ double ContinuousSpace::getDist2(int ind1, int ind2) { // squared distance
         double dx = getCoord(ind1, 0)-getCoord(ind2, 0);
         return dx*dx;
     } else {
-        double dist2=0.0;
-        double *p1 = &getCoord(ind1, 0);
-        double *p2 = &getCoord(ind2, 0);
+        double dist2 = 0.0;
+        positionType *p1 = &getCoord(ind1, 0);
+        positionType *p2 = &getCoord(ind2, 0);
         for (int d=0; d<Dims; ++d) {
             double dx = getDistance(*p1, *p2);
             dist2 += dx*dx;
@@ -363,7 +377,7 @@ void ContinuousSpace::initialize(int n0) {
     pos.assign(n0*Dims, initialPosition);
 }
 
-double ContinuousSpace::treatBoundaries(double pos, int individual) {
+ContinuousSpace::positionType ContinuousSpace::treatBoundaries(ContinuousSpace::positionType pos, int individual) {
     if (pos>maxPos || pos<0) {
         switch (boundaryCondition) {
             case Reflective:
@@ -453,6 +467,15 @@ void ContinuousSpace::compactData(std::vector<bool>& alive) {
 
 void ContinuousSpace::addToSample(Sample& theSample) {
     // add sample spatial position:
-    theSample.addData(new FloatData(pos));
+    theSample.addData(new XData<float>(pos));
+}
+
+void ContinuousSpace::readToSample(Sample& theSample, iSimfile& isf, int n) {
+    theSample.addData(new XData<float>(isf,n*Dims));
+}
+
+int ContinuousSpace::resumeFromCheckpoint(Checkpoint &cp, int dataIndex) {
+    pos = (dynamic_cast<XData<float>&>(cp.getData(dataIndex++))).getData();
+    return dataIndex;
 }
 
