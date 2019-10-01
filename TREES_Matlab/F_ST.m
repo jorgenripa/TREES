@@ -30,8 +30,8 @@ c_tot = 0;
 for li = 1:length(loci)
     locus = loci(li);
     % group genes:
-    G1 = [sample.G1(locus,group1); sample.G2(group1)];
-    G2 = [sample.G1(locus,group2); sample.G2(group2)];
+    G1 = [sample.G1(locus,group1); sample.G2(locus,group1)];
+    G2 = [sample.G1(locus,group2); sample.G2(locus,group2)];
     a_locus = 0;
     b_locus = 0;
     c_locus = 0;
