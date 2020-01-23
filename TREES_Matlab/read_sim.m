@@ -14,8 +14,7 @@ fmat = dir([simpath resultsName '.mat']);
 fsim = dir([simpath resultsName '.sim']);
 
 if ~isempty(fmat) && (isempty(fsim) || fsim.datenum<fmat.datenum)
-    S = load([simpath resultsName '.mat']);
-    sim = S.sim;
+    load([simpath resultsName '.mat'],'sim');
     return
 end
 if isempty(fsim) % there is no file
@@ -26,23 +25,46 @@ end
 fid = fopen([simpath resultsName '.sim'],'r');
 
 file_version = fread(fid,1,'int32');
-sim.seed = fread(fid,1,'uint32');
-if ~ismember(file_version,[1 2])
+if ~ismember(file_version,[1 2 3 4])
     fclose(fid);
     error(['Wrong file version: ' num2str(file_version)])
+end
+
+if file_version < 3
+    sim.seed = fread(fid,1,'uint32=>uint32');
+else
+    sim.seed = fread(fid,1,'uint64=>uint64');
 end
 
 % Read parameters
 
 % Simulation:
-verbose = readPar(fid,'verbose');
+if file_version < 3
+    verbose = readPar(fid,'verbose');
+end
 sim.t_max = readPar(fid,'t_max');
 sim.sample_interval = readPar(fid,'sample_interval');
+if file_version >= 3
+    sim.microsamples_option = readPar(fid,'microsamples');
+end
 if file_version >= 2
     sim.checkpoint_interval = readPar(fid,'checkpoint_interval');
-    sim.keep_old_checkpoints = readPar(fid,'keep_old_checkpoints');
+    [parname,parval] = readParPair(fid);
+    if strcmp(parname,'keep_old_checkpoints')
+        sim.keep_old_checkpoints = parval;
+        seed2 = readPar(fid,'seed');
+    elseif strcmp(parname,'seed')
+        if isnan(str2double(parval))
+            seed2 = parval;
+        else
+            seed2 = str2double(parval);
+        end
+    else
+        error(['Expected : keep_old_checkpoints, found : ' parname])
+    end
+else
+    seed2 = readPar(fid,'seed');
 end
-seed2 = readPar(fid,'seed');
 %if seed2 ~= sim.seed
 %    warning('Seed error')
 %end
@@ -56,6 +78,9 @@ sim.n_0 = readPar(fid,'n_0');
 %Genetics
 sim.Genetics.model = readPar(fid,'genetics');
 sim.Genetics.P_mutation = readPar(fid,'p_mutation');
+if strcmpi(sim.Genetics.model,'omnigenic')
+    sim.Genetics.loci = readPar(fid,'loci');
+end
 
 %Traits:
 sim.Traits = struct('name',{},'dims',{},'loci_per_dim',{},'initial_value',{},'transforms',{});
@@ -114,8 +139,14 @@ end
 %%% end parameter file
 
 sim.loci = fread(fid,1,'int32');
+if file_version >= 3
+    sim.microsamples = read_microsamples(fid, sim, file_version );
+end
 sim.sample_count = fread(fid,1,'int32');
-for si=1:sim.sample_count
+sample0 = readSample(fid,sim,file_version);
+sim.samples(1) = sample0;
+sim.samples(sim.sample_count) = sample0; % preallocation
+for si=2:sim.sample_count
     sim.samples(si) = readSample(fid,sim,file_version);
 end
 if sim.gene_tracking
@@ -134,12 +165,15 @@ if sim.gene_tracking
             a.child_list = fread(fid,a.children,'ubit64');
             list(ai) = a;
         end
+        next_id = fread(fid,1,'ubit64'); % This is not used
         sim.gene_lists{li} = list;
     end
 end
 % Don't read checkpoints
 fclose(fid);
-save([simpath resultsName '.mat'], 'sim')
+% Make simple stats:
+sim.stats = calc_stats(sim);
+save([simpath resultsName '.mat'], 'sim','-v7.3')
 
 
 function transform = readTransform(name,fid)
@@ -153,7 +187,7 @@ switch lower(name)
     case 'logistic'
         transform.min = readPar(fid,'min');
         transform.max = readPar(fid,'max');
-    case 'normal_deviation'
+    case 'normal_deviate'
         transform.SD = readPar(fid,'sd');
     case 'range'
         transform.min = readPar(fid,'min');
@@ -172,6 +206,9 @@ switch lower(module)
         space.dimensions = readPar(fid,'dimensions');
         space.P_disperse = readPar(fid,'p_disperse');
         space.dispersal_type = readPar(fid,'dispersal_type');
+        if lower(space.dispersal_type(1)) == 'd'
+            space.dispersal_distance = readPar(fid,'dispersal_distance');
+        end
         space.boundary = readPar(fid,'boundary');
         space.initial_position = readPar(fid,'initial_position');
     case 'continuous'
@@ -237,56 +274,220 @@ switch lower(module)
         error('Unknown Fitness module!')
 end
 
+function ms = read_microsamples(fid, sim,file_version)
+if file_version==3
+    microsamples_option = fread(fid,1,'char');
+else
+    microsamples_option = [];
+end
+microsamples_count = fread(fid,1,'int32');
+if microsamples_count == 0
+    ms = [];
+else
+    tot_dim = 0;
+    for ti=1:length(sim.Traits)
+        if sim.Traits(ti).loci_per_dim >0
+            tot_dim = tot_dim + sim.Traits(ti).dims;
+        end
+    end
+    if ~strcmpi(sim.Space.model,'none')
+        tot_dim = tot_dim + sim.Space.dimensions;
+    end
+    % pre-allocate matrices:
+    T = zeros(1, microsamples_count,'int64');
+    CPU_TIME = zeros(1, microsamples_count,'single');
+    N = zeros(1, microsamples_count,'int32');
+    MEANS = zeros(tot_dim, microsamples_count,'single');
+    VARS = zeros(tot_dim, microsamples_count,'single');
+    COVARS = zeros(tot_dim*(tot_dim+1)/2, microsamples_count,'single');
+    
+    for msi=1:microsamples_count
+        if file_version > 3
+            microsamples_option = fread(fid,1,'char=>char');
+        end
+        T(msi) = fread(fid,1,'int64');
+        CPU_TIME(msi) = fread(fid,1,'double');
+        N(msi) = fread(fid,1,'int32');
+        switch microsamples_option
+            case 'm'
+                if file_version>3
+                    msize = fread(fid,1,'int32');
+                end
+                MEANS(:,msi) = fread(fid,tot_dim,'float32=>float32');
+                if file_version>3
+                    vsize = fread(fid,1,'int32'); % This should be zero
+                end
+            case 'v'
+                if file_version>3
+                    msize = fread(fid,1,'int32');
+                end
+                MEANS(:,msi) = fread(fid,tot_dim,'float32=>float32');
+                if file_version>3
+                    vsize = fread(fid,1,'int32');
+                end
+                VARS(:,msi) = fread(fid,tot_dim,'float32=>float32');
+            case 'c'
+                if file_version>3
+                    msize = fread(fid,1,'int32');
+                end
+                MEANS(:,msi) = fread(fid,tot_dim,'float32=>float32');
+                if file_version>3
+                    vsize = fread(fid,1,'int32');
+                end
+                COVARS(:,msi) = fread(fid,tot_dim*(tot_dim+1)/2,'float32=>float32');
+        end
+    end
+    ms.T = T;
+    ms.N = N;
+    ms.CPU_TIME = CPU_TIME;    
+    ms.MEANS = MEANS;
+    if any(VARS(:)>0)
+        ms.VARS = VARS;
+    end
+    if any(COVARS(:)~=0)
+        ms.COVARS = COVARS;
+    end
+end
 
 function sample = readSample(fid,sim, file_version)
 sample.gen = fread(fid,1,'int64');
-sample.sample_size = fread(fid,1,'int32'); % file format is little endian.
-
+if file_version >= 3
+    sample.cputime = fread(fid,1,'float32');
+end
+sample.size = fread(fid,1,'int32'); % file format is little endian.
+if file_version > 3
+    gene_sampling = fread(fid,1,'int8'); %#ok<NASGU> % extra stored bool
+end
 if sim.gene_sampling
+    if file_version > 3
+        gene_type = fread(fid,1,'int8'); %#ok<NASGU> % extra stored type char
+    end
+    if file_version > 3 
+        loci = fread(fid,1,'int32');
+        pop_size = fread(fid,1,'int32');
+        gene_tracking = fread(fid,1,'int8');
+        if sim.gene_tracking
+            m_n = fread(fid,2,'int32');
+            G1id = fread(fid,sim.loci*sample.size,'ubit64=>ubit64');
+            m_n = fread(fid,2,'int32');
+            G2id = fread(fid,sim.loci*sample.size,'ubit64=>ubit64');
+        end
+    end
     switch lower(sim.Genetics.model)
         case 'diallelic'
-            G1 = fread(fid,sim.loci*sample.sample_size,'int8');
-            G2 = fread(fid,sim.loci*sample.sample_size,'int8');
-        case 'continuous_alleles'
-            G1 = fread(fid,sim.loci*sample.sample_size,'float32');
-            G2 = fread(fid,sim.loci*sample.sample_size,'float32');
+            if file_version > 3
+                G1 = read_bit_vector(fid);
+                G2 = read_bit_vector(fid);
+            else
+                G1 = fread(fid,sim.loci*sample.size,'int8=>int8');
+                G2 = fread(fid,sim.loci*sample.size,'int8=>int8');
+            end
+        case {'continuous_alleles', 'omnigenic'}
+            if file_version > 3, m_n = fread(fid,2,'int32'); end
+            G1 = fread(fid,sim.loci*sample.size,'float32=>float32');
+            if file_version > 3, m_n = fread(fid,2,'int32'); end
+            G2 = fread(fid,sim.loci*sample.size,'float32=>float32');
     end
-    sample.G1 = reshape(G1,sim.loci,sample.sample_size);
-    sample.G2 = reshape(G2,sim.loci,sample.sample_size);
+    sample.G1 = reshape(G1,sim.loci,sample.size);
+    sample.G2 = reshape(G2,sim.loci,sample.size);
 end
 if file_version>=2
     if sim.gene_tracking
-        G1id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G1id = reshape(G1id,sim.loci,sample.sample_size);
-        G2id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G2id = reshape(G2id,sim.loci,sample.sample_size);
+        if file_version==3
+            G1id = fread(fid,sim.loci*sample.size,'ubit64=>ubit64');
+            G2id = fread(fid,sim.loci*sample.size,'ubit64=>ubit64');
+        end
+        sample.G1id = reshape(G1id,sim.loci,sample.size);
+        sample.G2id = reshape(G2id,sim.loci,sample.size);
     end
 end
 
+if file_version>3
+    ntraits = fread(fid,1,'int32');
+end
 for tri = 1:length(sim.Traits)
     tr = sim.Traits(tri);
     if tr.loci_per_dim > 0
-        sample.(tr.name) = reshape( fread(fid,sample.sample_size*tr.dims,'float32'), tr.dims, sample.sample_size);
+        if file_version>3, m_n = fread(fid,2,'int32'); end
+        sample.(tr.name) = reshape( fread(fid,sample.size*tr.dims,'float32'), tr.dims, sample.size);
     end
 end
 
+% Space:
+if file_version>3
+    space_type = fread(fid,1,'int8');
+    size_dims = fread(fid,2,'int32');
+    tot_length = fread(fid,1,'int32'); % should be prod(size_dims)
+end
 switch lower(sim.Space.model)
     case 'none'
-    case 'discrete'
-        sample.pos = reshape(fread(fid,sample.sample_size*sim.Space.dimensions,'int32')',sim.Space.dimensions,sample.sample_size);
+    case 'discrete' 
+        L = sim.Space.size;
+        D = sim.Space.dimensions;
+        if file_version>3 % linear_patches stored
+            linear_patches = fread(fid,sample.size,'int32');
+            sample.pos = zeros(D, sample.size);
+            for d=D:-1:1
+                sample.pos(d,:) = mod(linear_patches, L);
+                linear_patches = floor(linear_patches/L);
+            end
+        else
+            sample.pos = reshape(fread(fid,sample.size*D,'int32'),D,sample.size);
+        end
     case 'continuous'
-        sample.pos = reshape(fread(fid,sample.sample_size*sim.Space.dimensions,'float32')',sim.Space.dimensions,sample.sample_size);
+        sample.pos = reshape(fread(fid,sample.size*sim.Space.dimensions,'float32'),sim.Space.dimensions,sample.size);
     otherwise
         error('Unsupported space model')
 end
 if file_version==1
     if sim.gene_tracking
-        G1id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G1id = reshape(G1id,sim.loci,sample.sample_size);
-        G2id = fread(fid,sim.loci*sample.sample_size,'ubit64');
-        sample.G2id = reshape(G2id,sim.loci,sample.sample_size);
+        G1id = fread(fid,sim.loci*sample.size,'ubit64');
+        sample.G1id = reshape(G1id,sim.loci,sample.size);
+        G2id = fread(fid,sim.loci*sample.size,'ubit64');
+        sample.G2id = reshape(G2id,sim.loci,sample.size);
     end
 end
+
+function st = calc_stats(sim)
+ndims = 0;
+names = {};
+for tr=sim.Traits
+    if tr.loci_per_dim>0
+        ndims = ndims + tr.dims;
+        if tr.dims==1
+            names{end+1} = tr.name;
+        else
+            for d=1:tr.dims
+                names{end+1} = [tr.name '_' num2str(d)];
+            end
+        end
+    end
+end
+if ~strcmp(sim.Space.model,'none')
+    ndims = ndims+sim.Space.dimensions;
+    names{end+1} = 'pos';
+end
+
+MM = zeros(ndims,sim.sample_count);
+CC = zeros(ndims*(ndims+1)/2, sim.sample_count);
+for si=1:sim.sample_count
+    sa = sim.samples(si);
+    X = [];
+    for tr=sim.Traits
+        if tr.loci_per_dim>0
+            X = [X sa.(tr.name)'];
+        end
+    end
+    if ~strcmp(sim.Space.model,'none')
+        X = [X sa.pos'];
+    end
+    MM(:,si) = mean(X)';
+    C = cov(X,1); % complete population sample
+    CC(:,si) = C(tril(ones(size(C),'logical')));
+end
+st.names = names;
+st.means = MM;
+st.covars = CC;
 
 function val = readPar(fid, pname)
 sline = readParLine(fid);
@@ -346,3 +547,33 @@ else
     end
 end
 
+function v = read_bit_vector(fid)
+bit_count = fread(fid,1,'int32');
+chunk_size = fread(fid,1,'int32'); % should be 8 (size in bytes)
+chunk_bits = chunk_size*8; % should be 64
+chunk_count = ceil(bit_count/chunk_bits);
+chunks = fread(fid,chunk_count,'ubit64=>ubit64');
+if exist('bits2bytes.mexmaci64','file')
+    v = bits2bytes(chunks,bit_count);
+else
+    v = zeros(1,bit_count,'int8');
+    pos = 1;
+    for ch_i = 1:floor(bit_count/chunk_bits)
+        chunk = chunks(ch_i);
+        v(pos:(pos+63)) = bitget(chunk,1:64);
+        pos = pos+64;
+        % This is slower:
+        %     mask = uint64(1);
+        %     for bit=1:chunk_bits
+        %         v(pos) = bitand(mask,chunk)>0;
+        %         pos = pos+1;
+        %         mask = mask*uint64(2);
+        %     end
+    end
+    bits_left = rem(bit_count,chunk_bits);
+    if bits_left>0
+        chunk = chunks(end);
+        v(pos:(pos+bits_left-1)) = bitget(chunk,1:bits_left);
+    end
+end
+v = v*2 - 1; % convert (0/1) to (-1/+1)

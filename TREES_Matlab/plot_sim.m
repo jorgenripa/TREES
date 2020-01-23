@@ -24,26 +24,26 @@ nT = length(Trait_names);
 bins = cell(1,nT);
 if strcmpi(sim.Genetics.model,'diallelic')
     maxx = zeros(1,nT);
-    for t = 1:nT
-        x = [sim.samples.(Trait_names{t})];
-        maxx(t) = max(abs(x(:)));
+    for tr = 1:nT
+        x = [sim.samples.(Trait_names{tr})];
+        maxx(tr) = max(abs(x(:)));
     end
     
-    for i=1:length(sim.samples)
-        s = sim.samples(i);
-        for t = 1:nT
-            x = s.(Trait_names{t});
-            if maxx(t) > 0
-                x = round(x/maxx(t),7)*maxx(t);
+    for si=1:length(sim.samples)
+        s = sim.samples(si);
+        for tr = 1:nT
+            x = s.(Trait_names{tr});
+            if maxx(tr) > 0
+                x = round(x/maxx(tr),3)*maxx(tr);
             end
-            bins{t} = unique([bins{t} x(:)']);
+            bins{tr} = unique([bins{tr} x(:)']);
         end
     end
-    for t=1:nT
-        if length(bins{t})>1
-            bins{t} = min(bins{t}):min(diff(bins{t})):max(bins{t});
+    for tr=1:nT
+        if length(bins{tr})>1
+            bins{tr} = min(bins{tr}):min(diff(bins{tr})):max(bins{tr});
         else
-            bins{t} = bins{t}+[-1 0 1];
+            bins{tr} = bins{tr}+[-1 0 1];
         end
     end
 else
@@ -52,7 +52,7 @@ else
     for i=1:length(sim.samples)
         s = sim.samples(i);
         for t = 1:length(Trait_names)
-            x = s.(Trait_names{t});
+            x = s.traits.(Trait_names{t});
             m = max(x(:));
             Smaxv(t) = max(Smaxv(t),m);
             m = min(x(:));
@@ -69,8 +69,8 @@ else
 end
 % plot all traits:
 figure(fig), clf
-tt = [sim.samples(:).gen];
-nn = [sim.samples(:).sample_size];
+tt = [sim.samples.gen];
+nn = [sim.samples.size];
 %sp = 1;
 rows = max(Trait_dims);
 for tr=1:nT
@@ -78,8 +78,8 @@ for tr=1:nT
         positions = zeros(length(bins{tr}),sim.sample_count);
         for si = 1:sim.sample_count
             s = sim.samples(si);
-            if s.sample_size > 0
-                xx = sim.samples(si).(Trait_names{tr});
+            if s.size > 0
+                xx = s.(Trait_names{tr});
                 xx = xx(d,:);
                 if 0 %isfield(s,'pos')
                     pp = s.pos;
@@ -111,16 +111,16 @@ end
 
 figtitle(sim.name)
 
-figure(fig+1), clf
-%[mean_Achoose,mean_Bchoose,std_colour,nnsp] = plot_RI_trends(sim,false,0.1);
-subplot(2,1,1)
-if tt(end) < sim.t_max % extinction?
-    nn = [nn 0];
-    tt = [tt tt(end)+sim.sample_interval];
-end
-plot(tt,nn,'b-')
-xlabel('generations')
-ylabel('total population size (blue)')
+% figure(fig+1), clf
+% %[mean_Achoose,mean_Bchoose,std_colour,nnsp] = plot_RI_trends(sim,false,0.1);
+% subplot(2,1,1)
+% if tt(end) < sim.t_max % extinction?
+%     nn = [nn 0];
+%     tt = [tt tt(end)+sim.sample_interval];
+% end
+% plot(tt,nn,'b-')
+% xlabel('generations')
+% ylabel('total population size (blue)')
 % raxis
 % plot(tt,nnsp,'r-');
 % ylabel('#species (red)')

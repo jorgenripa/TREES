@@ -26,38 +26,45 @@ F_ST_i = zeros(L,1);
 a_tot = 0;
 b_tot = 0;
 c_tot = 0;
-
+Group1_genes = [sample.G1(:,group1) sample.G2(:,group1)];
+Group2_genes = [sample.G1(:,group2) sample.G2(:,group2)];
 for li = 1:length(loci)
     locus = loci(li);
     % group genes:
-    G1 = [sample.G1(locus,group1); sample.G2(locus,group1)];
-    G2 = [sample.G1(locus,group2); sample.G2(locus,group2)];
+    G1 = reshape(Group1_genes(locus,:),2,n1); % [sample.G1(locus,group1); sample.G2(locus,group1)];
+    G2 = reshape(Group2_genes(locus,:),2,n2); % [sample.G1(locus,group2); sample.G2(locus,group2)];
     a_locus = 0;
     b_locus = 0;
     c_locus = 0;
     
     % Find all alleles:
-    all_alleles = unique([G1(:);G2(:)])';
+    if isa(G1,'int8')
+        all_alleles = [-1 1];
+    else
+        all_alleles = unique([G1(:);G2(:)])';
+    end
     for allele = all_alleles
         p1 = sum(G1(:)==allele)/2/n1;
         p2 = sum(G2(:)==allele)/2/n2;
-        p_bar = (n1*p1+n2*p2)/N;
-        s2 = (n1*(p1-p_bar)^2 + n2*(p2-p_bar)^2)/(r-1)/n_bar; 
-        % homozygotes:
-        homo1 = sum(G1(1,:)==allele & G1(2,:)==allele);
-        % proportion heterozygotes:
-        hetero1 = (p1*2*n1 - 2*homo1) / n1;
-        % homozygotes:
-        homo2 = sum(G2(1,:)==allele & G2(2,:)==allele);
-        % proportion heterozygotes:
-        hetero2 = (p2*2*n2 - 2*homo2) / n2;
-        h_bar = (n1*hetero1 + n2*hetero2)/N; % average heterozygosity
-        a = n_bar/n_c*( s2 - 1/(n_bar-1)*( p_bar*(1-p_bar) - (r-1)/r*s2 - h_bar/4));
-        a_locus = a_locus + a;
-        b = n_bar/(n_bar-1)*( p_bar*(1-p_bar) - (r-1)/r*s2 - (2*n_bar-1)/4/n_bar * h_bar );
-        b_locus = b_locus + b;
-        c = h_bar/2;
-        c_locus = c_locus + c;
+        if p1>0 || p2>0
+            p_bar = (n1*p1+n2*p2)/N;
+            s2 = (n1*(p1-p_bar)^2 + n2*(p2-p_bar)^2)/(r-1)/n_bar;
+            % homozygotes:
+            homo1 = sum(G1(1,:)==allele & G1(2,:)==allele);
+            % proportion heterozygotes:
+            hetero1 = (p1*2*n1 - 2*homo1) / n1;
+            % homozygotes:
+            homo2 = sum(G2(1,:)==allele & G2(2,:)==allele);
+            % proportion heterozygotes:
+            hetero2 = (p2*2*n2 - 2*homo2) / n2;
+            h_bar = (n1*hetero1 + n2*hetero2)/N; % average heterozygosity
+            a = n_bar/n_c*( s2 - 1/(n_bar-1)*( p_bar*(1-p_bar) - (r-1)/r*s2 - h_bar/4));
+            a_locus = a_locus + a;
+            b = n_bar/(n_bar-1)*( p_bar*(1-p_bar) - (r-1)/r*s2 - (2*n_bar-1)/4/n_bar * h_bar );
+            b_locus = b_locus + b;
+            c = h_bar/2;
+            c_locus = c_locus + c;
+        end
     end
     F_ST_i(li) = a_locus/(a_locus + b_locus + c_locus);
     a_tot = a_tot + a_locus;
