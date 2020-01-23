@@ -27,36 +27,80 @@
 #include <chrono>
 #include <cstdint>
 #include <numeric>
+#include <random>
+
 using namespace std;
 
 #include "randgen.h"
 
+std::mt19937_64 the_generator; // Turns out the 64-bit version is faster than the 32-bit (Mac)
+std::uniform_real_distribution<double> unif_dist(0.0,1.0);
+
 int myround(double x) { return (int)floor(x+0.5);}
 
-unsigned randomize()
+seed_type randomize()
 {
     // set seed as microseconds since Epoch.
     using namespace std::chrono;
     system_clock::time_point now = system_clock::now();
     
-    unsigned micros = (unsigned)duration_cast<microseconds>(now.time_since_epoch()).count();
+    seed_type micros = (seed_type)duration_cast<microseconds>(now.time_since_epoch()).count();
+    
+    the_generator.seed(micros);
 
-    srand(micros);
-    std::cout << "Randomize seed : " << micros << '\n';
+    // old code:
+//    srand(micros);
+//    std::cout << "Randomize seed : " << micros << '\n';
+    
     return micros;
 }
 
-void randseed(unsigned seed) {
-    srand(seed);
-    std::cout << "Randseed set : " << seed << '\n';
+void randseed(seed_type seed) {
+    // new code:
+    the_generator.seed(seed);
+//    // old code:
+//    srand(seed);
+//    std::cout << "Randseed set : " << seed << '\n';
+}
+
+seed_type make_seed() {
+    return the_generator();
 }
 
 double rand1() // uniform [0,1)
 {
-    int r = rand();
-    double C = int64_t(RAND_MAX)+1.0; // RAND_MAX is 2^31 in OS-X 10.9.5
-    return r / C;//double(RAND_MAX+1);
+    // new code:
+    return unif_dist(the_generator);
+//    // old code:
+//    int r = rand();
+//    double C = int64_t(RAND_MAX)+1.0; // RAND_MAX is 2^31 in OS-X 10.9.5
+//    return r / C;//double(RAND_MAX+1);
 }
+
+bitGenerator::bitGenerator(){
+    regenerate();
+}
+
+void bitGenerator::regenerate() {
+    // new code:
+    bits = (uint64_t)the_generator();
+    bitsleft = 64;
+
+//    // old code:
+//    bits = (unsigned)(rand1()*65536);
+//    bitsleft = 16;
+}
+
+//bool bitGenerator::nextBit() {
+//    //return rand1()<0.5;
+//    if (bitsleft==0) {
+//        regenerate();
+//    }
+//    bool reply = bits & 1;
+//    bits >>= 1;
+//    --bitsleft;
+//    return reply;
+//}
 
 double randn() {
     static bool iset = false;
@@ -81,15 +125,18 @@ double randn() {
 
 // A double exponential distributed random number,
 // i.e. exponentially distributed in both + and - direction
-// absmean is mean(abs(x))
-double doubleExp(double absmean) {
+double doubleExp(double variance) {
+    double a = sqrt(variance/2); // distribution parameter
     double r = rand1(); // r is recycled
-    if (r<0.5) {
-        // now r is uniform [0, 0.5)
-        return -absmean*log(2*r);
+    while (r==0) { // just in case, should be a rare event
+        r = rand1();
+    }
+    if (r<=0.5) {
+        // now r is uniform (0, 0.5]
+        return -a*log(2*r);
     } else {
-        // now r is uniform [0.5, 1)
-        return absmean*log(2*r-1);
+        // now r is uniform (0.5, 1)
+        return a*log(2*r-1);
     }
 }
 
@@ -207,40 +254,4 @@ int weightedChoiceCumSum( vector<double>& cumW ) {
     return (int) (cwp - cumW.begin());
 }
 
-// This is inline for speed:
-/* void bitGenerator::regenerate() {
-    bits = (unsigned)rand1()*65536;
-    bitsleft = 16;
-}*/
-
-bitGenerator::bitGenerator(){
-    regenerate();
-}
-
-void bitGenerator::regenerate() {
-    bits = (unsigned)(rand1()*65536);
-    bitsleft = 16;
-}
-bool bitGenerator::nextBit() {
-    //return rand1()<0.5;
-    if (bitsleft==0) {
-        regenerate();
-    }
-    bool reply = bits & 1;
-    bits >>= 1;
-    --bitsleft;
-    return reply;
-}
-
-
-// This is inline for speed:
-/* bool bitGenerator::nextBit() {
-    if (bitsleft==0) {
-        regenerate();
-    }
-    bool reply = bits % 2;
-    bits >>= 1;
-    --bitsleft;
-    return reply;
-} */
 

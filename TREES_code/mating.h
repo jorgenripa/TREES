@@ -28,6 +28,7 @@
 
 #include "trait.h"
 #include "parameterFile.h"
+#include "types.h" // defines traitType
 
 class Population;
 class Survival;
@@ -53,14 +54,14 @@ protected:
     Trait* target;// X
     Trait* pref; // Y
     Trait* strength; // C
-    double disassortative_limit;
-    double dislimsq;
-    double& getX(int individual,int dim) { return target->traitValue(individual,dim);}
-    double& getY(int individual,int dim) { return pref->traitValue(individual,dim);}
-    double& getC(int individual, int dim) { return strength->traitValue(individual,dim);}
+    traitType disassortative_limit;
+    traitType dislimsq;
+    traitType& getX(int individual,int dim) { return target->traitValue(individual,dim);}
+    traitType& getY(int individual,int dim) { return pref->traitValue(individual,dim);}
+    traitType& getC(int individual, int dim) { return strength->traitValue(individual,dim);}
 public:
     Preference(Population& p, ParameterFile & pf);
-    double getPartnerWeight(int female, int male);
+    traitType getPartnerWeight(int female, int male);
 };
 
 

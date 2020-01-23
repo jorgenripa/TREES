@@ -28,42 +28,48 @@
 #include <cstdint>
 #include "types.h"
 
-typedef uint64_t idType;
 
-class Simfile;
+class oSimfile;
+class iSimfile;
 
 class Gene {
     friend class GeneList;
     friend class Genetics;
 protected:
-    idType id; // the id is assigned by the GeneList
-    idType parent;
-    timeType birthTime, deathTime;
-    double geneticEffect;
-    std::vector<idType> children;
+    id_type id; // the id is assigned by the GeneList
+    id_type parent;
+    time_type birthTime, deathTime;
+    float geneticEffect;
+    std::vector<id_type> children;
     bool sampled; // sampled genes should not be pruned
-    typedef std::vector<idType>::iterator  childIter;
+    typedef std::vector<id_type>::iterator  childIter;
 public:
-    Gene(); // somehow, this is needed
-    Gene(idType parent, timeType time, double effect);
-    void addChild(idType child);
-    void removeChild(idType child);
-    std::vector<idType>& getChildren() { return children;}
-    friend  Simfile& operator<<(Simfile& os, Gene& a);
+    Gene(); // needed for lists, etc.
+    Gene(id_type parent, time_type time, double effect);
+    Gene(iSimfile& isf);
+    void addChild(id_type child);
+    void removeChild(id_type child);
+    std::vector<id_type>& getChildren() { return children;}
+    void writeToFile(oSimfile& osf);
 };
 
-Simfile& operator<<(Simfile& os, Gene& a);
+//oSimfile& operator<<(oSimfile& os, Gene& a);
 
 class GeneList : public std::vector<Gene> {
 protected:
-    idType nextId;
+    id_type nextId;
 public:
     GeneList();
+    GeneList(iSimfile& isf);
     ~GeneList();
-    idType addGene(idType parent, timeType time, double effect); // returns new Allele id
-    Gene& getGene(idType id);
-    int getGeneIndex(idType id);
+    id_type addGene(id_type parent, time_type time, double effect); // returns new Allele id
+    Gene& getGene(id_type id);
+    int getGeneIndex(id_type id);
     void pruneGenes(std::vector<bool>& alive);
+    void writeGenes(oSimfile& osf);
 };
+
+//oSimfile& operator<<(oSimfile& os, GeneList& list);
+
 
 #endif /* defined(__Species__geneTracking__) */

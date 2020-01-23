@@ -23,7 +23,7 @@
 #include <cctype>
 #include <iostream>
 #include <math.h>
-#include "stdlib.h"
+#include <cassert>
 
 #include "space.h"
 #include "population.h"
@@ -34,43 +34,124 @@ Space::Space(Population& p) : pop(p), Dims(0) {}
 
 Space::~Space() {}
 
-DiscreteSpace::DiscreteSpace(Population& p) :
+/*class Space_sample {
+    protected:
+    int pop_size;
+    int dims;
+    Space_sample(Space& S);
+    public:
+    virtual void write_to_file(oSimfile& osf)=0;
+};*/
+
+Space_sample::Space_sample(Space& S) {
+    pop_size = S.pop.size();
+    dims = S.getDims();
+}
+
+Space_sample::~Space_sample(){
+}
+
+void Space_sample::write_to_file(oSimfile &osf) {
+    osf.write<size_type>(pop_size);
+    osf.write<size_type>(dims);
+}
+
+Space_sample::Space_sample(iSimfile& isf) {
+    pop_size = isf.read<size_type>();
+    dims = isf.read<size_type>();
+}
+
+Space_sample* Space_sample::create_from_file(iSimfile &isf) {
+    Space_types type = (Space_types)isf.read<char>();
+    switch (type) {
+        case Space_types::Continuous_space_type:
+        return new Continuous_space_sample(isf);
+        break;
+
+        case Space_types::Discrete_space_type:
+        return new Discrete_space_sample(isf);
+        break;
+
+        default:
+        std::cout << "Wrong space type!\n";
+        exit(1);
+        return NULL;
+        break;
+    }
+}
+
+Discrete_space::Discrete_space(Population& p) :
 Space(p) {}
 
-bool DiscreteSpace::isDiscrete() { return true; }
+bool Discrete_space::isDiscrete() { return true; }
 
-NullSpace::NullSpace(Population& p) : DiscreteSpace(p) {}
-NullSpace::~NullSpace() {}
-void NullSpace::initialize(int n0) {}
-void NullSpace::disperse() {}
-void NullSpace::prepareNewGeneration(int size) {}
-void NullSpace::nextGeneration() {}
-void NullSpace::addChild(int mom, int dad) {}
-void NullSpace::compactData(std::vector<bool>& alive) {}
-void NullSpace::addToSample(Sample& theSample) {}
-void NullSpace::readToSample(Sample& theSample, iSimfile& isf, int n) {};
-int NullSpace::resumeFromCheckpoint(Checkpoint& cp, int dataIndex) {return dataIndex; }
-double NullSpace::getPosition(int individual, int dim) { return 0.0; }
-double NullSpace::getDist2(int ind1, int ind2) {return 0.0;}
+Space_sample* Discrete_space::make_sample() {
+    return new Discrete_space_sample(*this);
+}
 
-int NullSpace::getLinearPatch(int individual) { return 0; }
-int NullSpace::popSizeInPatch(int linearPatch) {
+/*class DiscreteSpace_sample {
+    protected:
+    std::vector<int> linear_patches;
+    public:
+    DiscreteSpace_sample(DiscreteSpace& S);
+}*/
+
+Discrete_space_sample::Discrete_space_sample(Discrete_space& S) : Space_sample(S) {
+    linear_patches.clear();
+    if (dims>0) { // S may be a NullSpace
+        linear_patches.reserve(pop_size);
+        for (int ind=0; ind<pop_size; ++ind) {
+            linear_patches.push_back(S.getLinearPatch(ind));
+        }
+    }
+}
+
+Discrete_space_sample::~Discrete_space_sample() {
+}
+
+void Discrete_space_sample::write_to_file(oSimfile &osf) {
+    osf.write<char>((char)Discrete_space_type);
+    Space_sample::write_to_file(osf); // writes basic parameters
+    osf.writeVector<int>(linear_patches);
+}
+
+Discrete_space_sample::Discrete_space_sample(iSimfile& isf) :
+Space_sample(isf){
+    isf.readVector<int>(linear_patches);
+}
+
+Null_space::Null_space(Population& p) : Discrete_space(p) {}
+Null_space::~Null_space() {}
+void Null_space::initialize() {}
+void Null_space::disperse() {}
+void Null_space::prepareNewGeneration(int size) {}
+void Null_space::nextGeneration() {}
+void Null_space::addChild(int mom, int dad) {}
+void Null_space::compactData(std::vector<bool>& alive) {}
+void Null_space::resumeFromCheckpoint(Space_sample* S_s) {}
+double Null_space::getPosition(int individual, int dim) { return 0.0; }
+double Null_space::getDist2(int ind1, int ind2) {return 0.0;}
+
+int Null_space::getLinearPatch(int individual) { return 0; }
+int Null_space::popSizeInPatch(int linearPatch) {
     if (linearPatch==0) {
         return pop.size();
     } else {
         return 0;
     }
 }
-int NullSpace::getPatchCount() { return 1; }
+int Null_space::getPatchCount() { return 1; }
+double Null_space::get_mean(int dim) { return 0.0; }
+double Null_space::get_variance(int dim, double mean) { return 0.0; };
 
 
-DiscreteSpaceImp::DiscreteSpaceImp(Population& p, ParameterFile& pf) :
-DiscreteSpace(p) {
+Discrete_space_imp::Discrete_space_imp(Population& p, ParameterFile& pf) :
+Discrete_space(p) {
     length = pf.getPositiveInt("size");
     Dims = pf.getPositiveInt("dimensions");
     std::string PdTraitname = pf.getString("p_disperse");
     PDisp = pop.findTrait(PdTraitname);
-    if (PDisp->getDims() > 1) {
+    if (PDisp->get_dims() > 1) {
         std::cout << "Dispersal probability can not be multidimensional. Trait : " << PdTraitname << '\n';
         exit(0);
     }
@@ -105,25 +186,25 @@ DiscreteSpace(p) {
         exit(0);
     }
 
-    patches.reserve(10000*Dims);
-    newPatches.reserve(10000*Dims);
+    patches.reserve(Dims,10000);
+    newPatches.reserve(Dims,10000);
     patchPopSizes.assign(getPatchCount(), 0);
     generationLastCount = -1;
 }
 
-DiscreteSpaceImp::~DiscreteSpaceImp() {
+Discrete_space_imp::~Discrete_space_imp() {
 }
 
 
-int DiscreteSpaceImp::getLinearPatch(int individual) {
+int Discrete_space_imp::getLinearPatch(int individual) {
   return linearPatches[individual];
 }
 
-double DiscreteSpaceImp::getPosition(int indiviudal, int dim) {
-    return patches[indiviudal*Dims + dim];
+double Discrete_space_imp::getPosition(int indiviudal, int dim) {
+    return patches(dim,indiviudal);
 }
 
-double DiscreteSpaceImp::getDist2(int ind1, int ind2) { // squared distance
+double Discrete_space_imp::getDist2(int ind1, int ind2) { // squared distance
     double dist2=0.0;
     int *p1 = &getPatch(ind1, 0);
     int *p2 = &getPatch(ind2, 0);
@@ -136,7 +217,7 @@ double DiscreteSpaceImp::getDist2(int ind1, int ind2) { // squared distance
     return dist2;
 }
 
-int DiscreteSpaceImp::popSizeInPatch(int linearPatch) {
+int Discrete_space_imp::popSizeInPatch(int linearPatch) {
     if (pop.getAge()!=generationLastCount) {
         patchPopSizes.assign(getPatchCount(), 0);
         for (int i=0; i<pop.size(); ++i) {
@@ -148,16 +229,16 @@ int DiscreteSpaceImp::popSizeInPatch(int linearPatch) {
 }
 
 
-void DiscreteSpaceImp::initialize(int n0) {
+void Discrete_space_imp::initialize() {
     // Put everyone in initialPatch
-    patches.assign(n0*Dims, initialPatch);
+    patches.assign(Dims, pop.size(), initialPatch);
     assignLinearPatches();
 }
 
-void DiscreteSpaceImp::disperse() {
+void Discrete_space_imp::disperse() {
     if (length>1) {
         for (int i=0; i<pop.size(); ++i) {
-            if (rand1()<PDisp->traitValue(i) ) {
+            if (rand1()<PDisp->traitValue(i)) {
                 double z;
                 int dim, dist;
                 switch (dispType) {
@@ -204,7 +285,7 @@ void DiscreteSpaceImp::disperse() {
     } // if (length>1)
 }
 
-int DiscreteSpaceImp::treatBoundaries(int pos, int individual) {
+int Discrete_space_imp::treatBoundaries(int pos, int individual) {
     if (pos>=length || pos<0) {
         switch (boundaryCondition) {
             case Reflective:
@@ -234,17 +315,16 @@ int DiscreteSpaceImp::treatBoundaries(int pos, int individual) {
     return pos;
 }
 
-
-void DiscreteSpaceImp::prepareNewGeneration(int size) {
-    newPatches.clear();
+void Discrete_space_imp::prepareNewGeneration(int size) {
+    newPatches.assign(getDims(), 0, 0);
 }
 
-void DiscreteSpaceImp::nextGeneration() {
+void Discrete_space_imp::nextGeneration() {
     patches = newPatches;
     assignLinearPatches();
 }
 
-int DiscreteSpaceImp::calcLinearPatch(int individual) {
+int Discrete_space_imp::calcLinearPatch(int individual) {
     int p = 0;
     for (int d=0; d<Dims; ++d) {
         p = length*p + getPatch(individual, d);
@@ -252,62 +332,73 @@ int DiscreteSpaceImp::calcLinearPatch(int individual) {
     return p;
 }
 
-void DiscreteSpaceImp::assignLinearPatches() {
+std::vector<int> Discrete_space_imp::calc_coords_from_linear(int linear) {
+    std::vector<int> coords(Dims,0);
+    for (int d=Dims-1; d>=0; --d) {
+        coords.at(d) = linear % length;
+        linear = linear/length;
+    }
+    return coords;
+}
+
+void Discrete_space_imp::assignLinearPatches() {
     if (Dims==1) {
-        linearPatches = patches;
+        linearPatches.resize(patches.get_N());
+        std::memcpy(&linearPatches.at(0), patches.getX(), patches.get_N()*sizeof(int));
     } else {
-        linearPatches.assign(patches.size(), 0);
-        for (int i=0; i<patches.size(); ++i) {
+        linearPatches.assign(patches.get_N(), 0);
+        for (int i=0; i<patches.get_N(); ++i) {
             linearPatches[i] = calcLinearPatch(i);
         }
     }
 }
 
-void DiscreteSpaceImp::addChild(int mom, int dad) {
+void Discrete_space_imp::addChild(int mom, int dad) {
     // inherit mother's patch:
-    for (int d=0; d<Dims; ++d) {
-        newPatches.push_back(getPatch(mom,d));
-    }
+    newPatches.add_column(&getPatch(mom,0));
 }
 
-void DiscreteSpaceImp::compactData(std::vector<bool>& alive) {
+void Discrete_space_imp::compactData(std::vector<bool>& alive) {
+    patches.compact_data(alive);
     int iw=0;
     for (int ir=0; ir<pop.size(); ++ir) {
         if (alive.at(ir)) {
-            for (int d=0; d<Dims; ++d) {
-                getPatch(iw, d) = getPatch(ir, d);
-            }
             linearPatches[iw] = linearPatches[ir];
             ++iw;
         }
     }
-    patches.resize(iw*Dims);
     linearPatches.resize(iw);
 }
 
-void DiscreteSpaceImp::addToSample(Sample& theSample) {
-    // add sample spatial position:
-    theSample.addData(new XData<int>(patches));
-}
-void DiscreteSpaceImp::readToSample(Sample& theSample, iSimfile& isf, int n) {
-    theSample.addData(new XData<int>(isf,n));
-}
-
-int DiscreteSpaceImp::resumeFromCheckpoint(Checkpoint &cp, int dataIndex) {
-    patches = (dynamic_cast<XData<int>&>(cp.getData(dataIndex++))).getData();
+void Discrete_space_imp::resumeFromCheckpoint(Space_sample* S_Sample) {
+    Discrete_space_sample* DS_sample = dynamic_cast<Discrete_space_sample*>(S_Sample);
+    linearPatches = DS_sample->linear_patches;
+    assert(linearPatches.size()==pop.size());
+    patches.assign(Dims, pop.size(), 0);
+    for (int ind=0; ind<pop.size(); ++ind) {
+        std::vector<int> coords = calc_coords_from_linear(linearPatches.at(ind));
+        for (int d=0; d<Dims; ++d) {
+            patches(d,ind) = coords.at(d);
+        }
+    }
     patchPopSizes.assign(getPatchCount(), 0);
     generationLastCount = -1;
-    assignLinearPatches();
-    return dataIndex;
 }
 
-ContinuousSpace::ContinuousSpace(Population& p, ParameterFile& pf) :
+double Discrete_space_imp::get_mean(int dim) {
+    return patches.row_mean(dim);
+}
+double Discrete_space_imp::get_variance(int dim, double mean) {
+    return patches.row_variance(dim, mean);
+}
+
+Continuous_space::Continuous_space(Population& p, ParameterFile& pf) :
 Space(p) {
     maxPos = pf.getPositiveDouble("size");
     Dims = pf.getPositiveInt("dimensions");
     std::string PdTraitname = pf.getString("p_disperse");
     PDisp = pop.findTrait(PdTraitname);
-    if (PDisp->getDims() > 1) {
+    if (PDisp->get_dims() > 1) {
         std::cout << "Dispersal probability can not be multidimensional. Trait : " << PdTraitname << '\n';
         exit(0);
     }
@@ -327,31 +418,27 @@ Space(p) {
         std::cout << "ContinuousSpace: Initial position outside range : " << initialPosition << '\n';
         exit(0);
     }
-    pos.reserve(10000*Dims);
-    newPos.reserve(10000*Dims);
+    pos.reserve(Dims,10000);
+    newPos.reserve(Dims,10000);
 }
 
-ContinuousSpace::~ContinuousSpace() {
+Continuous_space::~Continuous_space() {
 }
 
-bool ContinuousSpace::isDiscrete() { return false; }
+bool Continuous_space::isDiscrete() { return false; }
 
-ContinuousSpace::positionType& ContinuousSpace::getCoord(int indiviudal, int dim) {
-    return pos[indiviudal*Dims + dim];
+double Continuous_space::getPosition(int indiviudal, int dim) {
+    return pos(dim,indiviudal);
 }
 
-double ContinuousSpace::getPosition(int indiviudal, int dim) {
-    return pos[indiviudal*Dims + dim];
-}
-
-double ContinuousSpace::getDist2(int ind1, int ind2) { // squared distance
+double Continuous_space::getDist2(int ind1, int ind2) { // squared distance
     if (Dims==1) {
-        double dx = getCoord(ind1, 0)-getCoord(ind2, 0);
+        double dx = pos(0,ind1)-pos(0,ind2);
         return dx*dx;
     } else {
         double dist2 = 0.0;
-        positionType *p1 = &getCoord(ind1, 0);
-        positionType *p2 = &getCoord(ind2, 0);
+        positionType *p1 = &pos(0,ind1);
+        positionType *p2 = &pos(0,ind2);
         for (int d=0; d<Dims; ++d) {
             double dx = getDistance(*p1, *p2);
             dist2 += dx*dx;
@@ -362,22 +449,12 @@ double ContinuousSpace::getDist2(int ind1, int ind2) { // squared distance
     }
 }
 
-// this is inline for speed:
-/*double ContinuousSpace::getDistance(double pos1, double pos2) {
-    double dx = fabs(pos1-pos2);
-    if (boundaryCondition==circular && dx>maxPos/2) {
-        return maxPos-dx;
-    } else {
-        return dx;
-    }
-}*/
-
-void ContinuousSpace::initialize(int n0) {
+void Continuous_space::initialize() {
     // Put everyone in initialPosition
-    pos.assign(n0*Dims, initialPosition);
+    pos.assign(Dims,pop.size(), initialPosition);
 }
 
-ContinuousSpace::positionType ContinuousSpace::treatBoundaries(ContinuousSpace::positionType pos, int individual) {
+Continuous_space::positionType Continuous_space::treatBoundaries(Continuous_space::positionType pos, int individual) {
     if (pos>maxPos || pos<0) {
         switch (boundaryCondition) {
             case Reflective:
@@ -407,7 +484,7 @@ ContinuousSpace::positionType ContinuousSpace::treatBoundaries(ContinuousSpace::
     return pos;
 }
 
-void ContinuousSpace::disperse() {
+void Continuous_space::disperse() {
     for (int i=0; i<pop.size(); ++i) {
         double z = rand1();
         double PD = PDisp->traitValue(i);
@@ -419,7 +496,7 @@ void ContinuousSpace::disperse() {
                 if (z<PD/2) {
                     dist = -dist;
                 }
-                getCoord(i,0) = treatBoundaries(getCoord(i,0) + dist, i);
+                pos(0,i) = treatBoundaries(pos(0,i) + dist, i);
             } else {
                 // Generate a random direction:
                 std::vector<double> dir(Dims,0);
@@ -430,52 +507,62 @@ void ContinuousSpace::disperse() {
                 }
                 double C = dist/sqrt(r2);
                 for (int d=0; d<Dims; ++d) {
-                    getCoord(i,d) = treatBoundaries(getCoord(i,d) + dir[d]*C, i);
+                    pos(d,i) = treatBoundaries(pos(d,i) + dir[d]*C, i);
                 }
             }
         }
     }
 }
 
-void ContinuousSpace::prepareNewGeneration(int size) {
-    newPos.clear();
+void Continuous_space::prepareNewGeneration(int size) {
+    newPos.assign(getDims(), 0, 0);
 }
 
-void ContinuousSpace::nextGeneration() {
+void Continuous_space::nextGeneration() {
     pos = newPos;
 }
 
-void ContinuousSpace::addChild(int mom, int dad) {
+void Continuous_space::addChild(int mom, int dad) {
     // inherit mother's position:
-    for (int d=0; d<Dims; ++d) {
-        newPos.push_back(getCoord(mom,d));
-    }
+    newPos.add_column(&pos(0,mom));
 }
 
-void ContinuousSpace::compactData(std::vector<bool>& alive) {
-    int iw=0; // writing position
-    for (int ir=0; ir<pop.size(); ++ir) {
-        if (alive.at(ir)) {
-            for (int d=0; d<Dims; ++d) {
-                getCoord(iw,d) = getCoord(ir,d);
-            }
-            ++iw;
-        }
-    }
-    pos.resize(iw*Dims);
+void Continuous_space::compactData(std::vector<bool>& alive) {
+    pos.compact_data(alive);
 }
 
-void ContinuousSpace::addToSample(Sample& theSample) {
-    // add sample spatial position:
-    theSample.addData(new XData<float>(pos));
+void Continuous_space::resumeFromCheckpoint(Space_sample* S_sample) {
+    Continuous_space_sample* CS_sample = dynamic_cast<Continuous_space_sample*>(S_sample);
+    pos = CS_sample->positions;
 }
 
-void ContinuousSpace::readToSample(Sample& theSample, iSimfile& isf, int n) {
-    theSample.addData(new XData<float>(isf,n*Dims));
+double Continuous_space::get_mean(int dim) {
+    return pos.row_mean(dim);
+}
+double Continuous_space::get_variance(int dim, double mean) {
+    return pos.row_variance(dim, mean);
 }
 
-int ContinuousSpace::resumeFromCheckpoint(Checkpoint &cp, int dataIndex) {
-    pos = (dynamic_cast<XData<float>&>(cp.getData(dataIndex++))).getData();
-    return dataIndex;
+Continuous_space_sample::Continuous_space_sample(Continuous_space& S) : Space_sample(S) {
+    positions = S.pos;
 }
 
+void Continuous_space_sample::write_to_file(oSimfile& osf) {
+    osf.write<char>((char)Continuous_space_type);
+    Space_sample::write_to_file(osf);
+    assert(positions.get_M()==dims);
+    assert(positions.get_N()==pop_size);
+    positions.write_to_file(osf);
+}
+
+Continuous_space_sample::Continuous_space_sample(iSimfile& isf) :
+Space_sample(isf){
+    positions.read_from_file(isf);
+}
+
+Continuous_space_sample::~Continuous_space_sample() {
+}
+
+Space_sample* Continuous_space::make_sample() {
+    return new Continuous_space_sample(*this);
+}

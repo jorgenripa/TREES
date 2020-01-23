@@ -33,6 +33,9 @@ class ParameterFile {
 public:
     ParameterFile(const std::string& fileName);
     ~ParameterFile();
+    std::string get_next_name();
+    std::string get_next_value_string();
+    std::string get_next_value_string_lower();
     double getDouble(const char* name);
     double getPositiveDouble(const char* name);
     int64_t getLong(const char* name);
@@ -42,14 +45,16 @@ public:
     bool getBool(const char* name);
     std::string getString(const char* name);
     std::string getStringLower(const char* name);
-    void getStringPair(std::string& s1, std::string& s2);
+    //void getStringPair(std::string& s1, std::string& s2);
     void close();
     bool eof() { return pfile.eof(); }
 protected:
     std::ifstream pfile;
+    std::string next_name;
+    std::ios::pos_type last_read_position;
     char skipWhiteSpace();
     void skipRestOfLine();
-    void getNextLine(char* buffer);
+    //void getNextLine(char* buffer);
 };
 
 

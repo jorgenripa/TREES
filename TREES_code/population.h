@@ -32,8 +32,9 @@
 #include "space.h"
 #include "trait.h"
 #include "parameterFile.h"
-#include "sample.h"
 #include "types.h"
+
+class Population_checkpoint;
 
 ////////////////////////////////
 // Population class
@@ -41,58 +42,140 @@
 // and where all ecological and genetical parameters are kept.
 ////////////////////////////////
 class Population {
+    friend class Population_sample;
+    friend class Population_checkpoint;
+    friend class Microsample;
 protected:
-    int n; //population size (sometimes including dead)
-    int n0; // initial population size
+// Constant simulation parameters:
     int F; // constant fecundity
     int mating_trials; // maximal number of males a female can reject
-    timeType age;
     bool gene_tracking;
     bool gene_sampling;
     bool withinPatchMating; // used for efficiency
-    Genetics* genetics;
-    std::vector<Fitness*> fitnessList;
     MatingType theMatingType;
     double mate_s_space;
-    std::vector<Preference*> matingPreferenceList;
-    std::vector<int> findDads();
-    std::vector<Trait*>  traitList; // a list of traits
+    int n0; // initial population size
+    
+// Model structures:
+    Genetics* genetics;
     Space* space;
+    std::vector<Preference*> matingPreferenceList;
+    std::vector<Trait*>  traitList; // a list of traits
+    std::vector<Fitness*> fitnessList;
+
+// Dynamic parameters:
+    int n; //population size (sometimes including dead)
+    time_type age;
     std::vector<bool>   alive;
     std::vector<double> fitness;
     bool somebodyDied;
+    
+    std::vector<int> findDads();
     void allAlive();
     void readGenetics( ParameterFile& pf);
-    void readTraits( ParameterFile& pf, std::string& modType, std::string& modName);
-    void addFitness(std::string modName, ParameterFile& pf);
-    void readMating(ParameterFile& pf, std::string& modType, std::string& modName);
-    void addPreference(std::string modName, ParameterFile& pf);
-    void addSpace(std::string modName, ParameterFile& pf);
+    void readTraits( ParameterFile& pf);
+    void addFitness(ParameterFile& pf);
+    void readMating(ParameterFile& pf);
+    void addPreference(ParameterFile& pf);
+    void addSpace(ParameterFile& pf);
 
     void compactData();
     void generatePhenotypes();
-    void addTrait(std::string& traitName, ParameterFile& pf);
-    void addTraitConstant(std::string& traitName, ParameterFile& pf);
-    void addTransformToLastTrait(std::string& tname, ParameterFile& pf);
-    double& getTrait(int individual, int trait) { return traitList.at(trait)->traitValue(individual); }
+    void addTrait(std::string traitName, ParameterFile& pf);
+    void addTraitConstant(std::string traitName, ParameterFile& pf);
+    //void addTransformToLastTrait(std::string tname, ParameterFile& pf);
+    traitType& getTrait(int individual, int trait) { return traitList.at(trait)->traitValue(individual); }
     std::vector<Trait*>& getTraits() {return traitList;}
+    int calc_total_data_dimensions();
+
+
 public:
     Population(ParameterFile& pf);
     ~Population();
-    // Added as a quick fix, remove in Super4:
     void initialize();
-    Sample* makeSample();
+    void resumeAtCheckpoint(Population_checkpoint& cp);
+    // Running:
     void makeNextGeneration(); //
     void reproduce();
     void survive();
     void kill(int individual);
+    // Info:
     int size() { return n;}
     Genetics& getGenetics() {return *genetics;}
     Space& getSpace() {return *space;}
     int getF() { return F;}
     Trait* findTrait(std::string& name);
-    timeType getAge() { return age;}
+    time_type getAge() { return age;}
     bool isTrackingGenes() { return gene_tracking; }
+};
+
+class Sample_base {
+protected:
+    time_type generation;
+    double cputime; // in seconds
+    int pop_size;
+    
+    void set(time_type gen, double cpu, int n)
+        { generation=gen; cputime=cpu; pop_size=n;}
+    Sample_base(time_type generation, double cputime, int n)
+        { set(generation,cputime,n);}
+    Sample_base()
+        {set(0,0,0);}
+    
+public:
+    time_type get_generation() { return generation; }
+    double get_cputime() { return cputime;}
+    int get_pop_size() {return pop_size;}
+    virtual ~Sample_base();
+};
+
+
+class Population_sample : public Sample_base {
+    protected:
+    Genetics_sample* genes_sample;
+    std::vector<Trait_sample> traits;
+    Space_sample* space_sample;
+    public:
+    Population_sample(Population& pop, double cputime);
+    Population_sample(iSimfile& isf);
+    virtual ~Population_sample();
+    void write_to_file(oSimfile& osf);
+};
+
+class Population_checkpoint : public Sample_base {
+    friend class Population;
+    // stores genes, genelists and space, and possible trait parameters
+    // (trait values can be reconstructed from genes)
+    seed_type seed;
+    Genetics_sample* genetics;
+    std::vector<GeneList> geneListsCopy;
+    Space_sample* space;
+    // A vector of vectors (one per non-constant trait, or none):
+    std::vector<std::vector<double>*> GP_map_data; // possible trait parameters (see Omnigenic model)
+    
+    public:
+    Population_checkpoint(Population& pop, seed_type cpseed, double cputime);
+    Population_checkpoint(iSimfile& isf);
+    ~Population_checkpoint();
+    void write_to_file(oSimfile& osf);
+    seed_type get_seed() { return seed;}
+    std::vector<double>* get_map_data(int mi) { return GP_map_data.at(mi);}
+};
+
+class Microsample : public Sample_base {
+    // optionally stores means, variances and covariances of all traits and spatial positions
+    protected:
+    void calc_means(Population& pop);
+    void calc_variances(Population& pop);
+    void calc_covariances(Population& pop);
+    
+    public:
+    char option;
+    std::vector<traitType> means;
+    std::vector<traitType> covariances; // either just variances or all covariances
+    Microsample(Population & pop, char option, double cputime);
+    Microsample(iSimfile& isf);
+    void write_to_file(oSimfile& osf);
 };
 
 #endif /* defined(__Species__population__) */

@@ -38,18 +38,61 @@ int main(int argc, const char * argv[]) {
     // Calculate table for interpolation of exponential function:
     fillExpTable();// don't remove!!!!
     
+    int next_par_i = 1;
+    // check for command line options:
+    bool resume = false;
+    bool verbose = false;
+    while (next_par_i<argc && argv[next_par_i][0]=='-') {
+        std::string option(argv[next_par_i]);
+        if (option=="-resume") {
+            resume = true;
+        } else if (option=="-v") {
+            verbose = true;
+        } else {
+            std::cout << "Unknown option : " << argv[next_par_i] << '\n';
+            exit(1);
+        }
+        ++next_par_i;
+    }
     // Check command line parameters: the parameter file and possible replicate indeces
+    // syntax: > TREES parameterFile.txt [rep1 [rep2]]
     std::string parameterFileName;
     int rep1, rep2;
-    if (argc<2) {
-        std::cout << "Error: Missing parameter file. \n Syntax:\n Species parFile.txt [rep1] [rep2]\n";
-        return 0;
+    if (argc-next_par_i < 1) {
+        std::cout << "Error: Missing parameter file. \n Syntax:\n TREES parameter_file [first_replicate  [last_replicate]]\n";
+        return 1;
+    }
+    parameterFileName = argv[next_par_i++];
+    if (resume) {
+        // resume option, single replicate
+        // syntax: > TREES -resume parameter_file.txt results_file.txt [generation [new_results_file.txt]]
+        std::string resultsFile, newResultsFile;
+        time_type gen;
+        if (next_par_i<argc) {
+            resultsFile = argv[next_par_i++];
+            if (next_par_i<argc) {
+                // read a float instead of digit to interpret input as "1e6" correctly:
+                gen = atof(argv[next_par_i++]);
+            } else {
+                gen = -1; // meaning: start at last available checkpoint
+            }
+            Simulation theSim(parameterFileName, verbose);
+            if (next_par_i<argc) {
+                newResultsFile = argv[next_par_i++];
+            } else {
+                newResultsFile = resultsFile;
+            }
+            theSim.resume(resultsFile,gen,newResultsFile);
+        } else {
+            std::cout << "Error: Missing resume parameters.\n Syntax:\n TREES [-resume] [-v] parameter_file results_file [generation [new_results_file]]\n Omitting the generation means starting at last saved checkpoint.\n" ;
+            return 1;
+        }
     } else {
-        parameterFileName = argv[1];
-        if(argc>=3) {
-            rep1 = atoi(argv[2]);
-            if(argc>=4) {
-                rep2 = atoi(argv[3]);
+        // standard run option, one or more replicates
+        if(next_par_i<argc) {
+            rep1 = atoi(argv[next_par_i++]);
+            if(next_par_i<argc) {
+                rep2 = atoi(argv[next_par_i]);
             } else {
                 rep2 = rep1;
             }
@@ -57,16 +100,18 @@ int main(int argc, const char * argv[]) {
             rep1 = 1;
             rep2 = 1;
         }
+        
+        
+        // main loop running replicates:
+        std::cout << "Running replicate " << rep1 << " to " << rep2 << '\n';
+        Simulation theSim(parameterFileName, verbose);
+        for (int i=rep1; i<=rep2; ++i) {
+            std::cout << "Running " << i << '\n';
+            theSim.initialize(i);
+            double t1 = getNow();
+            theSim.runFromGeneration(0, theSim.get_seed(), 0);
+            std::cout << time2str(getNow()-t1) << '\n';
+        }
     }
-
-    // main loop running replicates:
-    std::cout << "Running replicate " << rep1 << " to " << rep2 << '\n';
-    for (int i=rep1; i<=rep2; ++i) {
-        Simulation theSim(parameterFileName);
-        double t1 = getNow();
-        std::cout << "Running " << i << '\n';
-        theSim.runAndSave(i);
-        std::cout << time2str(getNow()-t1) << '\n';
-    }
-    return 0;    
+    return 0;
 }

@@ -40,26 +40,31 @@
 ///////////////////////////////////////////////
 class Simulation {
 protected:
-    unsigned seed;
+    seed_type seed;
     bool verbose;
-    timeType tmax;
-    timeType sampleInterval;
-    timeType checkpointInterval; // how often to save checkpoints
+    time_type tmax;
+    char microsample_option; // N[one], M[eans], V[ariance], C[ovariance] (all converted to lower case)
+    time_type sampleInterval;
+    time_type checkpointInterval; // how often to save checkpoints
     bool keepOldCheckpoints;
     std::string  simName;
     std::string  resultsFileName;
     std::ostringstream  parameterFileCopy;
     Population* thePop;
-    std::vector<Sample*> sampleList;
-    std::vector<Checkpoint*> checkpointList;
+    std::vector<Sample_base*> sample_list;
+    std::vector<Sample_base*> microsample_list;
+    // CheckpointList is implemented as a list of Sample_base* to be able to administrate it as such. The pointers are typecast to Population_checkpoint* (a subclass of Sample_base) when necessary.
+    std::vector<Sample_base*> checkpointList;
     void load(std::string& resultsFile);
     void save();
     void makeFileName(int replicate);
 public:
-    Simulation(std::string& parameterFileName);
+    Simulation(std::string& parameterFileName, bool verbose);
     ~Simulation();
+    seed_type get_seed() { return seed;}
     void initialize(int replicate);
-    void runFromGeneration(timeType gen);
-    void resume(std::string resultsFile, timeType gen, std::string newResultsFile);
+    void runFromGeneration(time_type gen, seed_type gen_seed, double time_so_far);
+    void resume(std::string resultsFile, time_type gen, std::string newResultsFile);
 };
+
 #endif /* defined(__Species__simulation__) */

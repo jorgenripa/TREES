@@ -19,6 +19,8 @@
 // Contact: jorgen.ripa@biol.lu.se
 //
 
+// Fitness calculations are generally done with double precision,
+// although trait values may be in single precision.
 
 #include <math.h>
 #include <iostream>
@@ -41,6 +43,7 @@ StabilizingSelection::StabilizingSelection(Population& p, ParameterFile& pf) :
 Fitness(p) {
     std::string zTraitname = pf.getString("trait");
     zTrait = pop.findTrait(zTraitname);
+    optimum = pf.getDouble("optimal_value");
     cost_coefficient = pf.getDouble("cost_coefficient");
     cost_exponent = pf.getDouble("cost_exponent");
 }
@@ -49,17 +52,18 @@ StabilizingSelection::~StabilizingSelection() {}
 
 void StabilizingSelection::aggregateFitness(std::vector<double>& fitness) {
     //double* fi = &fitness[0];
+    Fastexp fexp;
     for (int i=0; i<pop.size(); ++i) {
         if (fitness[i]>0) {
             double dzsum = 0;
-            for (int d=0; d<zTrait->getDims(); ++d) {
-                double z = zTrait->traitValue(i,d);
-                dzsum += z*z;
+            for (int d=0; d<zTrait->get_dims(); ++d) {
+                double dz = zTrait->traitValue(i,d) - optimum;
+                dzsum += dz*dz;
             }
             if(cost_exponent!=2) {
                 dzsum = fastabspow(dzsum,cost_exponent/2);
             }
-            fitness[i] *= std::max(0.0,(1-cost_coefficient*dzsum));
+            fitness[i] *= fexp.exp(-cost_coefficient*dzsum);
         }
     }
 }
@@ -97,7 +101,7 @@ void DensityDependence::aggregateFitness(std::vector<double>& fitness) {
         
     // Within patch case:
     } else if (pop.getSpace().isDiscrete() && s_space==0) {
-        DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(pop.getSpace());
+        Discrete_space& theSpace = dynamic_cast<Discrete_space&>(pop.getSpace());
         int n = pop.size();
         
         // Vector of local patch densities (linear indexing):
@@ -152,13 +156,13 @@ ResourceLandscape::~ResourceLandscape() {
 
 double ResourceLandscape::getTraitDist2( int ind1, int ind2) { // squared distance in trait space
     double dx2 = 0;
-    int dims = xTrait->getDims();
+    int dims = xTrait->get_dims();
     if (dims==1) {
         dx2 = getX(ind1) - getX(ind2);
         dx2 *= dx2;
     } else {
-        double *xp1 = &getX(ind1,0);
-        double *xp2 = &getX(ind2,0);
+        traitType *xp1 = &getX(ind1,0);
+        traitType *xp2 = &getX(ind2,0);
         for (int d=0; d<dims; ++d) {
             double dx = *xp1 - *xp2;
             dx2 += dx*dx;
@@ -174,7 +178,7 @@ void ResourceLandscape::aggregateFitness(std::vector<double>& fitness)
  {
      double twosa2 = 2*sa*sa;
      int n = pop.size();
-     int xdims = xTrait->getDims();
+     int xdims = xTrait->get_dims();
      int sdims = pop.getSpace().getDims();
 
      std::vector<double> comp;
@@ -191,7 +195,7 @@ void ResourceLandscape::aggregateFitness(std::vector<double>& fitness)
              if (i<n-1) {
                  double ix = getX(i);
                  // This is a loop of complexity n^2. Use efficient iterators.
-                 double* xcip = &getX(i+1);
+                 traitType* xcip = &getX(i+1);
                  double* compcip = &comp.at(i+1);
                  for (int ci=i+1; ci<n; ++ci) {
                      double xdiff = ix - *xcip;
@@ -212,7 +216,7 @@ void ResourceLandscape::aggregateFitness(std::vector<double>& fitness)
          return;
      } else if (pop.getSpace().isDiscrete() && s_space==0) {
          // Special case 2: within patch competition
-         DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(pop.getSpace());
+         Discrete_space& theSpace = dynamic_cast<Discrete_space&>(pop.getSpace());
          for (int i=0; i<n; ++i) {
              double compi = comp.at(i);
              int patchi = theSpace.getLinearPatch(i);
@@ -252,7 +256,7 @@ void ResourceLandscape::aggregateFitness(std::vector<double>& fitness)
          }
      }
      if (xdims==1) {
-         double *xip = &getX(0,0);
+         traitType *xip = &getX(0,0);
          for (int i=0; i<n; ++i) {
              double xopt = k_space*pop.getSpace().getPosition(i, 0);
              double dx = *xip - xopt;
@@ -261,7 +265,7 @@ void ResourceLandscape::aggregateFitness(std::vector<double>& fitness)
              ++xip;
          }
      } else {
-         double *xip = &getX(0,0);
+         traitType *xip = &getX(0,0);
          for (int i=0; i<n; ++i) {
              double xopt = k_space*pop.getSpace().getPosition(i, 0);
              double dx2 = 0;
@@ -325,7 +329,7 @@ void DiscreteResources::aggregateFitness(std::vector<double>& fitness) {
             }
         }
     } else { // we can assume discrete space
-        DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(pop.getSpace());
+        Discrete_space& theSpace = dynamic_cast<Discrete_space&>(pop.getSpace());
         for (int patchi=0; patchi<theSpace.getPatchCount(); ++patchi) {
             for (int ri=0; ri<nR; ++ri) {
                 double consumption = 0;

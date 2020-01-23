@@ -28,14 +28,11 @@
 
 #include "population.h"
 #include "mating.h"
-#include "sample.h"
+#include "genotype_phenotype_map.h"
 #include "randgen.h"
 #include "fastmath.h"
 
 Population::Population(ParameterFile& pf) {
-    std::string modType;
-    std::string modName;
-
     // Read general parameters:
     gene_tracking = pf.getBool("gene_tracking");
     gene_sampling = pf.getBool("gene_sampling");
@@ -54,29 +51,27 @@ Population::Population(ParameterFile& pf) {
     readGenetics(pf);
     
     // Read traits:
-    readTraits(pf, modType, modName);
+    readTraits(pf);
     
     // read Space module, if specified:
-    if (modType=="space") {
-        addSpace(modName,pf);
-        pf.getStringPair( modType, modName );
+    if (pf.get_next_name()=="space") {
+        addSpace(pf);
     } else {
-        space = new NullSpace(*this);
+        space = new Null_space(*this);
     }
     
     // Read fitness modules
     fitnessList.clear();
-    while (modType=="fitness") {
-        addFitness(modName,pf);
-        pf.getStringPair( modType, modName );
+    while (pf.get_next_name()=="fitness") {
+        addFitness(pf);
     }
     
     // Mating
-    readMating(pf, modType, modName);
+    readMating(pf);
     
     
-    if (modType.length()>0) {
-        std::cout << "Unexpected module at end : " << modType << "\n";
+    if (pf.get_next_name().length()>0) {
+        std::cout << "Unexpected module at end : " << pf.get_next_name() << "\n";
         exit(0);
     }
     
@@ -96,35 +91,32 @@ void Population::readGenetics( ParameterFile& pf) {
         genetics = new ContinuousAlleles(*this, pf);
     } else if ( geneticsModel == "diallelic" ) {
         genetics = new Diallelic(*this, pf);
+    } else if ( geneticsModel == "omnigenic" ) {
+        genetics = new Omnigenic(*this, pf);
     } else {
         std::cout << "Unknown Genetics model!\n";
         exit(0);
     }
 }
 
-void Population::readTraits( ParameterFile& pf, std::string& modType, std::string& modName) {
+void Population::readTraits( ParameterFile& pf) {
     traitList.clear();
-    pf.getStringPair(modType, modName );
-    while (modType.substr(0,5)=="trait") {
-        if (modType=="trait") {
-            addTrait(modName, pf);
-        } else if (modType =="trait_constant") {
-            addTraitConstant(modName, pf);
+    while (pf.get_next_name().substr(0,5)=="trait") {
+        if (pf.get_next_name()=="trait") {
+            addTrait(pf.get_next_value_string(), pf);
+        } else if (pf.get_next_name() =="trait_constant") {
+            addTraitConstant(pf.get_next_value_string(), pf);
         } else {
-            std::cout << "Unknown Trait type:" << modType << "\n";
-            exit(0);
-        }
-        pf.getStringPair( modType, modName );
-        while (modType=="transform") {
-            addTransformToLastTrait(modName,pf);
-            pf.getStringPair( modType, modName );
+            std::cout << "Unknown Trait type:" << pf.get_next_name() << "\n";
+            exit(1);
         }
     }
 }
 
-void Population::readMating(ParameterFile& pf, std::string& modType, std::string& modName) {
-    if (modType=="mating_pool") {
-        switch (std::tolower(modName[0])) {
+void Population::readMating(ParameterFile& pf) {
+    if (pf.get_next_name()=="mating_pool") {
+        std::string mod_name = pf.get_next_value_string();
+        switch (std::tolower(mod_name[0])) {
             case 's':
                 theMatingType = Selfing;
                 break;
@@ -136,23 +128,21 @@ void Population::readMating(ParameterFile& pf, std::string& modType, std::string
                 mate_s_space = pf.getDouble("s_space");
                 break;
             default:
-                std::cout << "Unknown Mating_pool type : " << modName << "\n";
+                std::cout << "Unknown Mating_pool type : " << mod_name << "\n";
                 exit(0);
                 break;
         }
     }else {
-        std::cout << "Expected Mating_pool, found : " << modType << "\n";
-        exit(0);
+        std::cout << "Expected Mating_pool, found : " << pf.get_next_name() << "\n";
+        exit(1);
     }
 
     mating_trials = pf.getPositiveInt("mating_trials");
     
     // Read preference modules
     matingPreferenceList.clear();
-    pf.getStringPair( modType, modName );
-    while (modType=="mating_preference") {
-        addPreference(modName,pf);
-        pf.getStringPair( modType, modName );
+    while (pf.get_next_name()=="mating_preference") {
+        addPreference(pf);
     }
 }
 
@@ -166,29 +156,12 @@ void Population::kill(int individual) {
     somebodyDied = true;
 }
 
-void Population::addTrait(std::string& traitName, ParameterFile& pf){
+void Population::addTrait(std::string traitName, ParameterFile& pf){
     traitList.push_back(new Trait(traitName, *this, pf));
 }
-void Population::addTraitConstant(std::string& traitName, ParameterFile& pf){
+void Population::addTraitConstant(std::string traitName, ParameterFile& pf){
     traitList.push_back(new TraitConstant(traitName, *this, pf));
 }
-
-
-void Population::addTransformToLastTrait(std::string& tname, ParameterFile& pf) {
-    if (tname=="linear") {
-        traitList.back()->addTransform(new LinearTransform(pf));
-    } else if (tname=="abs") {
-        traitList.back()->addTransform(new AbsTransform(pf));
-    } else if (tname=="logistic") {
-        traitList.back()->addTransform(new LogisticTransform(pf));
-    } else if (tname=="normal_deviate") {
-        traitList.back()->addTransform(new NormalDeviate(pf));
-    } else {
-        std::cout << "Unknown transform : " << tname << '\n';
-        exit(0);
-    }
-}
-
 
 Trait* Population::findTrait(std::string& tname) {
     for (Trait* t :traitList) {
@@ -200,52 +173,46 @@ Trait* Population::findTrait(std::string& tname) {
     exit(0);
 }
 
-
-void Population::addFitness(std::string modName, ParameterFile &pf) {
-    //Convert to lower case:
-    std::transform(modName.begin(), modName.end(), modName.begin(), ::tolower);
-
-    if (modName=="stabilizing_selection") {
+void Population::addFitness(ParameterFile &pf) {
+    std::string mod_name = pf.get_next_value_string_lower();
+    if (mod_name=="stabilizing_selection") {
         fitnessList.push_back(new StabilizingSelection(*this, pf));
-    } else if (modName=="density_dependence") {
+    } else if (mod_name=="density_dependence") {
         fitnessList.push_back(new DensityDependence(*this, pf));
-    } else if (modName == "resource_landscape") {
+    } else if (mod_name == "resource_landscape") {
         fitnessList.push_back(new ResourceLandscape(*this, pf));
-    } else if (modName=="discrete_resources") {
+    } else if (mod_name=="discrete_resources") {
         fitnessList.push_back(new DiscreteResources(*this, pf));
-    } else if (modName=="spatial_gradient") {
+    } else if (mod_name=="spatial_gradient") {
         fitnessList.push_back(new SpatialGradient(*this, pf));
-    } else if (modName=="catastrophes") {
+    } else if (mod_name=="catastrophes") {
         fitnessList.push_back(new Catastrophe(*this, pf));
-//    } else if (modName=="FinchModel") {
+//    } else if (mod_name=="FinchModel") {
 //        fitnessList.push_back(new FinchModel(*this, pf));
     } else {
-        std::cout << "Unknown Fitness model : " << modName << "\n";
+        std::cout << "Unknown Fitness model : " << mod_name << "\n";
         exit(0);
     }
 }
 
-void Population::addPreference(std::string modName, ParameterFile &pf) {
-    //Convert to lower case:
-    std::transform(modName.begin(), modName.end(), modName.begin(), ::tolower);
-
-    if ( modName == "target_selection") {
+void Population::addPreference(ParameterFile &pf) {
+    std::string mod_name = pf.get_next_value_string_lower();
+    if ( mod_name == "target_selection") {
         matingPreferenceList.push_back(new Preference(*this, pf));
     } else {
-        std::cout << "Unknown Mating_preference model : " << modName << "\n";
-        exit(0);
+        std::cout << "Unknown Mating_preference model : " << mod_name << "\n";
+        exit(1);
     }
 }
 
-void Population::addSpace(std::string modName, ParameterFile &pf) {
-    //Convert to lower case:
-    std::transform(modName.begin(), modName.end(), modName.begin(), ::tolower);
-    if ( modName == "none") {
-        space = new NullSpace(*this);
-    } else if ( modName == "discrete") {
-        space = new DiscreteSpaceImp(*this, pf);
-    } else if ( modName == "continuous") {
-        space = new ContinuousSpace(*this, pf);
+void Population::addSpace(ParameterFile &pf) {
+    std::string mod_name = pf.get_next_value_string_lower();
+    if ( mod_name == "none") {
+        space = new Null_space(*this);
+    } else if ( mod_name == "discrete") {
+        space = new Discrete_space_imp(*this, pf);
+    } else if ( mod_name == "continuous") {
+        space = new Continuous_space(*this, pf);
     } else {
         std::cout << "Unknown Space model!\n";
         exit(0);
@@ -302,7 +269,7 @@ std::vector<int> Population::findDads() {
             dads[mom] = mom;
         }
     } else if (withinPatchMating) {
-        DiscreteSpace& theSpace = dynamic_cast<DiscreteSpace&>(getSpace());
+        Discrete_space& theSpace = dynamic_cast<Discrete_space&>(getSpace());
         std::vector<int> indList;
         for (int patch=0; patch<theSpace.getPatchCount(); ++patch) {
             if (theSpace.popSizeInPatch(patch)>0) {
@@ -414,7 +381,6 @@ std::vector<int> Population::findDads() {
                     ++trialCount; // rejection, try another mate
                 }
             }
-            
         }
     }
     return dads;
@@ -454,6 +420,7 @@ void Population::compactData(){
         }
     }
     n = iw;
+    fitness.resize(n);
     alive.assign(n, true);
     somebodyDied = false;
 }
@@ -474,38 +441,321 @@ Population::~Population() {
 }
 
 void Population::initialize() {
+    n = n0;
     // initialize genomes:
-    genetics->initialize(n0);
-    // set genes to initial values:
+    genetics->initialize();// genome pre-allocation
+    
     for( Trait* tr : traitList) {
-        tr->initialize(n0);
+        tr->initialize();// Normally sets genes to match initial trait values
     }
     if (gene_tracking) {
         // create gene tables and assign initial values:
-        genetics->initializeTracking(n0);
+        genetics->initializeTracking();
     }
     // assign initial position:
-    space->initialize(n0);
-    n = n0;
+    space->initialize();
     alive.assign(n, true);
     generatePhenotypes();
     age = 0;
 }
 
-Sample* Population::makeSample() {
-    Sample* theSample = new Sample(age,n);
-    if (gene_sampling) {
-        genetics->addToSample(*theSample);
-    }
-    for(Trait* tr : traitList) {
-        if (!tr->isConstant()) {
-            tr->addToSample(*theSample);
+int Population::calc_total_data_dimensions() {
+    int totd = 0;
+    for (Trait* tr : traitList) {
+        if (!tr->is_constant()) {
+            totd += tr->get_dims();
         }
     }
-    space->addToSample(*theSample);
-    if (gene_tracking) {
-        genetics->addGeneIDsToSample(*theSample);
-    }
-    return theSample;
+    totd += space->getDims();
+    return totd;
 }
 
+void Population::resumeAtCheckpoint(Population_checkpoint& cp) {
+    n = cp.get_pop_size();
+    age = cp.get_generation();
+    genetics->resumeFromCheckpoint(cp.genetics, cp.geneListsCopy);
+    space->resumeFromCheckpoint(cp.space);
+    if(cp.GP_map_data.size()>0) {
+        int gp_map_index = 0;
+        // This only restores parameters (if any).
+        // Actual phenotypes are regenerated directly from genotypes (below).
+        for (Trait* t : traitList) {
+            if (!t->is_constant()) {
+                t->get_GP_map()->resume_from_checkpoint_data(cp.get_map_data(gp_map_index));
+                gp_map_index++;
+            }
+        }
+    }
+    generatePhenotypes();
+    alive.assign(n, true);
+    somebodyDied = false;
+    fitness.assign(n, 1.0);
+}
+
+Sample_base::~Sample_base(){
+}
+
+/*class Population_sample {
+ protected:
+ time_type generation;
+ double cputime; // in seconds
+ int pop_size;
+ Genetics_sample* genes_sample;
+ std::vector<Trait_sample> traits;
+ Space_sample* space_sample;
+ public:
+ Population_sample(Population& pop, double cputime);
+ void write_to_file(oSimfile& osf);
+ };
+*/
+
+Population_sample::Population_sample(Population& pop, double cputime) :
+    Sample_base(pop.getAge(), cputime, pop.size()) {
+        
+    if (pop.gene_sampling) {
+        genes_sample = pop.getGenetics().make_sample();
+    } else {
+        genes_sample = NULL;
+    }
+    traits.clear();
+    for(Trait* tr : pop.traitList) {
+        if (!tr->is_constant()) {
+            traits.push_back(Trait_sample(*tr));
+        }
+    }
+    space_sample = pop.getSpace().make_sample();
+}
+
+Population_sample::~Population_sample() {
+    if (genes_sample) {
+        delete genes_sample;
+    }
+    delete space_sample;
+}
+
+void Population_sample::write_to_file(oSimfile &osf) {
+    osf.write<time_type>(generation);
+    osf.write<float>(cputime);
+    osf.write<size_type>(pop_size);
+
+    if(genes_sample) {
+        osf.write<char>((char)true); // sizeof(bool) is implementation-specific, but sizeof(char) is always 1
+        genes_sample->write_to_file(osf);
+    } else {
+        osf.write<char>((char)false);
+    }
+
+    osf.write<int>((int)traits.size()); // The number of sampled traits (not constants)
+    for(Trait_sample& trs : traits) {
+        trs.write_to_file(osf);
+    }
+
+    space_sample->write_to_file(osf);
+}
+
+Population_sample::Population_sample(iSimfile& isf) {
+    generation = isf.read<time_type>();
+    cputime = isf.read<float>();
+    pop_size = isf.read<size_type>();
+    bool gene_sampling = (bool)isf.read<char>();
+    if (gene_sampling) {
+        genes_sample = Genetics_sample::create_from_file(isf);
+    } else {
+        genes_sample = NULL; // Important!!!
+    }
+    int ntraits = isf.read<int>();
+    traits.clear();
+    for (int ti=0; ti<ntraits; ++ti) {
+        traits.push_back(Trait_sample(isf));
+    }
+    space_sample = Space_sample::create_from_file(isf);
+}
+
+Population_checkpoint::Population_checkpoint(Population& pop, seed_type cpseed, double cputime) :
+Sample_base(pop.getAge(), cputime, pop.size()) {
+    seed = cpseed;
+    // copy all genomes, and possibly ID:s:
+    genetics = pop.getGenetics().make_sample();
+    // Store gene lists, if applicable:
+    if (pop.isTrackingGenes()) {
+        geneListsCopy = pop.getGenetics().getGeneLists(); // deep copy
+    } else {
+        geneListsCopy.clear();
+    }
+    GP_map_data.clear();
+    for(Trait* tr : pop.traitList) {
+        if (!tr->is_constant()) {
+            std::vector<double>* data = tr->get_GP_map()->make_checkpoint_data();
+            if (data) {
+                GP_map_data.push_back(data);
+            }
+        }
+    }
+    space = pop.getSpace().make_sample();
+}
+
+Population_checkpoint::~Population_checkpoint() {
+    delete genetics;
+    delete space;
+}
+
+void Population_checkpoint::write_to_file(oSimfile &osf) {
+    osf.write<seed_type>(seed);
+    osf.write<time_type>(generation);
+    osf.write<double>(cputime);
+    osf.write<int>(pop_size);
+    genetics->write_to_file(osf);
+    osf.write<size_type>((size_type)geneListsCopy.size());
+    //One genelist per locus:
+    for (GeneList& list : geneListsCopy) {
+        list.writeGenes(osf);
+    }
+    osf.write<size_type>((size_type)GP_map_data.size());
+    for (int ti=0; ti<GP_map_data.size(); ++ti) {
+        osf.writeVector(*GP_map_data.at(ti));
+    }
+    space->write_to_file(osf);
+}
+
+Population_checkpoint::Population_checkpoint(iSimfile& isf) {
+    seed = isf.read<seed_type>();
+    generation = isf.read<time_type>();
+    cputime = isf.read<double>();
+    pop_size = isf.read<int>();
+    // Genetics:
+    genetics = Genetics_sample::create_from_file(isf);
+    size_type genelist_count = isf.read<size_type>(); // number of loci, really
+    geneListsCopy.clear();
+    geneListsCopy.reserve(genelist_count);
+    for (int li=0; li<genelist_count; ++li) {
+        geneListsCopy.push_back(GeneList(isf));
+    }
+    // Trait parameters (Omnigenic GP maps):
+    size_type GP_map_data_count = isf.read<size_type>();
+    GP_map_data.clear();
+    for (int mi=0; mi<GP_map_data_count; ++mi) {
+        GP_map_data.push_back(new std::vector<double>());
+        isf.readVector<double>(*GP_map_data.back());
+    }
+    // Space:
+    space = Space_sample::create_from_file(isf);
+}
+
+
+Microsample::Microsample(Population& pop, char option, double cputime) :
+Sample_base(pop.getAge(), cputime, pop.size()){
+    this->option = option;
+    means.clear();
+    covariances.clear();
+    switch (option) {
+        case 'n':
+        break;
+        case 'm':
+        calc_means(pop);
+        break;
+        case 'v':
+        calc_means(pop);
+        calc_variances(pop);
+        break;
+        case 'c':
+        calc_means(pop);
+        calc_covariances(pop);
+        break;
+        default:
+        std::cout << "Microsample error.'\n'";
+        exit(1);
+        break;
+    }
+}
+
+void Microsample::write_to_file(oSimfile &osf) {
+    osf.write<char>(option);
+    osf.write<time_type>(generation);
+    osf.write<double>(cputime);
+    osf.write<size_type>(pop_size);
+    osf.writeVector<traitType>(means);
+    osf.writeVector<traitType>(covariances);
+}
+
+Microsample::Microsample(iSimfile& isf) {
+    option = isf.read<char>();
+    generation = isf.read<time_type>();
+    cputime = isf.read<double>();
+    pop_size = isf.read<size_type>();
+    isf.readVector<traitType>(means);
+    isf.readVector<traitType>(covariances);
+}
+
+void Microsample::calc_means(Population &pop) {
+    for (Trait* tr : pop.getTraits()) {
+        if (!tr->is_constant()) {
+            for (int dim=0; dim<tr->get_dims(); ++dim) {
+                means.push_back(tr->row_mean(dim));
+            }
+        }
+    }
+    // mean positions:
+    for (int dim=0; dim<pop.getSpace().getDims(); ++dim) {
+        means.push_back(pop.getSpace().get_mean(dim));
+    }
+}
+
+void Microsample::calc_variances(Population& pop) {
+    int mean_i = 0;
+    for (Trait* tr : pop.getTraits()) {
+        if (!tr->is_constant()) {
+            for (int dim=0; dim<tr->get_dims(); ++dim) {
+                covariances.push_back(tr->row_variance(dim,means.at(mean_i)));
+                ++mean_i;
+            }
+        }
+    }
+    // spatial variation:
+    for (int dim=0; dim<pop.getSpace().getDims(); ++dim) {
+        covariances.push_back(pop.getSpace().get_variance(dim,means.at(mean_i)));
+        ++mean_i;
+    }
+}
+
+void Microsample::calc_covariances(Population& pop) {
+    // Calculate (the upper triangle of) one major covariance matrix
+    // The covariance between all trait dimensions and all spatial dimensions
+    // First collect all data in one big matrix:
+    int total_dims = pop.calc_total_data_dimensions();
+    Matrix<traitType> bigM(pop_size,total_dims);
+    int Mdim=0;
+    for (Trait* tr : pop.getTraits()) {
+        if (!tr->is_constant()) {
+            for (int Tdim=0; Tdim<tr->get_dims(); ++Tdim) {
+                for (int ind=0; ind<pop_size; ++ind) {
+                    bigM(ind,Mdim) = (*tr)(Tdim,ind);
+                }
+                ++Mdim;
+            }
+        }
+    }
+    for (int Sdim=0; Sdim<pop.getSpace().getDims(); ++Sdim) {
+        for (int ind=0; ind<pop_size; ++ind) {
+            bigM(ind,Mdim) = pop.getSpace().getPosition(ind, Sdim);
+        }
+        ++Mdim;
+    }
+    // next, calculate all covariances, including variances
+    covariances.reserve(total_dims*(total_dims+1)/2);
+    covariances.clear();
+    for (int i1=0; i1<total_dims; ++i1) {
+        double m1 = means.at(i1);
+        for (int i2=i1; i2<total_dims; ++i2) {
+            double m2 = means.at(i2);
+            traitType* x1 = &bigM(0,i1);
+            traitType* x2 = &bigM(0,i2);
+            double prodsum = 0;
+            for (int ind=0; ind<pop_size; ++ind) {
+                prodsum+= (*x1-m1)*(*x2-m2);
+                ++x1;
+                ++x2;
+            }
+            covariances.push_back( prodsum/pop_size );//- means.at(i1)*means.at(i2) );
+        }
+    }
+}

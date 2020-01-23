@@ -27,7 +27,7 @@
 #include "simfile.h"
 #include "types.h"
 
-Gene::Gene(idType parent, timeType time, double effect) {
+Gene::Gene(id_type parent, time_type time, double effect) {
     id = 0;
     this->parent = parent;
     birthTime = time;
@@ -47,11 +47,11 @@ Gene::Gene() {
     sampled = false;
 }
 
-void Gene::addChild(idType child) {
+void Gene::addChild(id_type child) {
     children.push_back(child);
 }
 
-void Gene::removeChild(idType child) {
+void Gene::removeChild(id_type child) {
     for (childIter c=children.begin(); c!=children.end(); ++c) {
         if (*c==child) {
             children.erase(c);
@@ -62,19 +62,32 @@ void Gene::removeChild(idType child) {
     exit(1);
 }
 
-Simfile& operator<<(Simfile& sf, Gene& g) {
-    sf.write(g.id);
-    sf.write(g.parent);
-    sf.write(g.birthTime);
-    sf.write(g.deathTime);
-    sf.write((float)g.geneticEffect);
-    sf.write((int)g.children.size());
-    if (g.children.size()>0) {
-        sf.writeArray(&g.children[0], (int)g.children.size());
+void Gene::writeToFile(oSimfile& sf) {
+    sf.write<id_type>(id);
+    sf.write<id_type>(parent);
+    sf.write<time_type>(birthTime);
+    sf.write<time_type>(deathTime);
+    sf.write<float>(geneticEffect);
+    sf.write<int>((int)children.size());
+    if (children.size()>0) {
+        sf.writeArray<id_type>(&children[0], (int)children.size());
     }
-    return sf;
 }
 
+Gene::Gene(iSimfile& isf) {
+    id = isf.read<id_type>();
+    parent = isf.read<id_type>();
+    birthTime = isf.read<time_type>();
+    deathTime = isf.read<time_type>();
+    geneticEffect = isf.read<float>();
+    sampled = true;
+    int childrenCount = isf.read<int>();
+    children.clear();
+    children.reserve(childrenCount);
+    for (int ic=0; ic<childrenCount; ++ic) {
+        children.push_back(isf.read<id_type>());
+    }
+}
 
 GeneList::GeneList() {
     clear();
@@ -82,10 +95,28 @@ GeneList::GeneList() {
     nextId = 1; // 0 is reserved for invalid Genes
 }
 
+GeneList::GeneList(iSimfile& isf) {
+    int count = isf.read<int>();
+    clear();
+    reserve(count);
+    for (int gi=0; gi<count; ++gi) {
+        push_back(Gene(isf));
+    }
+    nextId = isf.read<id_type>();
+}
+
 GeneList::~GeneList() {
 }
 
-idType GeneList::addGene(idType parent, timeType time, double effect) {
+void GeneList::writeGenes(oSimfile& sf) {
+    sf.write<int>((int)size());
+    for( Gene& g: *this) {
+        g.writeToFile(sf);
+    }
+    sf.write<id_type>(nextId);
+}
+
+id_type GeneList::addGene(id_type parent, time_type time, double effect) {
     Gene newA( parent, time, effect);
     newA.id = nextId++;
     push_back(newA);
@@ -95,9 +126,9 @@ idType GeneList::addGene(idType parent, timeType time, double effect) {
     return newA.id;
 }
 
-int GeneList::getGeneIndex(idType id) {
+int GeneList::getGeneIndex(id_type id) {
     for (int a=0; a<size(); ++a) {
-        if (at(a).id==id) {
+        if ((*this)[a].id==id) {
             return a;
         }
     }
@@ -107,7 +138,7 @@ int GeneList::getGeneIndex(idType id) {
     // Care need to be taken when using the result.
 }
 
-Gene& GeneList::getGene(idType id) {
+Gene& GeneList::getGene(id_type id) {
     int i = getGeneIndex(id);
     if (i>=0) {
         return at(getGeneIndex(id));
@@ -127,7 +158,7 @@ void GeneList::pruneGenes(std::vector<bool>& alive) {
             }
             ++iw;
         } else { // remove dead gene from parent's list of children
-            idType parent = at(ir).parent;
+            id_type parent = at(ir).parent;
             if (parent>0) { // zero is the parent of the root
                 int parent_i = getGeneIndex(parent);
                 // If parent still in the list and active:

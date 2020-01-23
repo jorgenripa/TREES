@@ -19,113 +19,136 @@
 // Contact: jorgen.ripa@biol.lu.se
 //
 
+#include <cstdint>
+#include <cassert>
 
 #include "trait.h"
 #include "population.h"
-#include "sample.h"
+#include "genotype_phenotype_map.h"
 #include "randgen.h"
 
 // protected constructor, used by subclasses:
 Trait::Trait(std::string& tname, Population& p) :
-name(tname), pop(p), genes(p.getGenetics()) {
-    dims = 0;
-    lociPerDim = 0;
+Matrix<traitType>(0,0), name(tname), pop(p), genes(p.getGenetics()) {
+    GP_map = NULL;
     Xinit = 0;
-    startLocus = 0;
 }
 
 Trait::Trait(std::string& tname, Population& p, ParameterFile& pf) :
-name(tname), pop(p), genes(p.getGenetics()) {
+Matrix<traitType>(0,0), name(tname), pop(p), genes(p.getGenetics()) {
     
-    // Make genomic space for this trait:
-    dims = pf.getPositiveInt("dimensions");
-    lociPerDim = pf.getPositiveInt("loci_per_dim");
+    set_dims(pf.getPositiveInt("dimensions"));
+    int lociPerDim = pf.getPositiveInt("loci_per_dim");
     Xinit =pf.getDouble("initial_value");
-    startLocus = genes.loci;
-    genes.loci += lociPerDim*dims;
+    GP_map = genes.create_GP_map(*this,lociPerDim, pf);
     
     // Reserve memory space for phenotypes (this will be expanded when necessary):
-    X.reserve(10000*dims);
-    // clear transform list:
-    transforms.clear();
+    reserve(get_dims(),10000);
 }
 
-bool Trait::isConstant() { return false; }
+bool Trait::is_constant() { return false; }
 
-void Trait::initialize(int n0) {
-    genes.setInitialValue(Xinit,n0,startLocus,dims,lociPerDim);
+void Trait::initialize() {
+    assign(get_dims(), pop.size(), 0);
+    GP_map->initialize(Xinit); // this initializes the genes, not trait values
 }
 
 Trait::~Trait() {
-    for (int ti=0; ti<transforms.size(); ++ti) {
-        delete transforms.at(ti);
+    if (GP_map) {
+        delete GP_map;
     }
-}
-
-void Trait::addTransform(Transform *t) {
-    transforms.push_back(t);
 }
 
 void Trait::generatePhenotypes() {
-    X.assign(pop.size()*dims, 0);
-    if (lociPerDim>0) {
-        for (int i=0; i<pop.size(); ++i) {
-            for (int d=0; d<dims; ++d) {
-                traitValue(i,d) = genes.getGeneSum(i, startLocus + d*lociPerDim, startLocus + (d+1)*lociPerDim);
-            }
-        }
-    }
-    for (int ti=0; ti<transforms.size(); ++ti) {
-        transforms[ti]->transform(&X[0], X.size());
-    }
+    GP_map->generate_phenotypes();
 }
 
-double& Trait::traitValue(int individual, int dim) {
-    return X.at(individual*dims + dim);
+traitType& Trait::traitValue(int individual, int dim) {
+    assert(dim<get_dims() && individual<get_N());
+    return (*this)(dim,individual);
 }
 
-void Trait::compactData(std::vector<bool>& alive) {
-    // compact arrays:
-    int iw = 0; // write index
-    for (int ir=0; ir<pop.size(); ++ir) { // ir = read index
-        if (alive[ir]) {
-            if (ir>iw) {
-                for (int d=0; d<dims; ++d) {
-                    traitValue(iw,d) = traitValue(ir,d);
-                }
-            }
-            ++iw;
-        }
-    }
-    X.resize(iw*dims);
+/*
+void Trait::add_to_checkpoint(Checkpoint &cp) {
+    // Checkpoints don't store trait values.
+    // But, they may contain GP_map parameters:
+    GP_map->add_to_checkpoint(cp);
 }
 
-void Trait::addToSample(Sample& s) {
-    s.addData(new FloatData(X));
+void Trait::read_to_checkpoint(Checkpoint &cp, iSimfile &isf) {
+    GP_map->read_to_checkpoint(cp,isf);
 }
+
+int Trait::resume_from_checkpoint(Checkpoint &cp, int dataIndex) {
+    dataIndex = GP_map->resume_from_checkpoint(cp,dataIndex);
+    return dataIndex;
+}
+*/
+
+//////////////////////////////////////////////////////////
+// TraitConstant
+///////////////////////////////////////////////////
 
 TraitConstant::TraitConstant(std::string& name, Population& p, ParameterFile& pf):
 Trait(name,p) {
     
     // A constant trait is implemented as a trait with zero loci:
-    dims = pf.getPositiveInt("dimensions");
-    lociPerDim = 0;
+    set_dims(pf.getPositiveInt("dimensions"));
     Xinit =pf.getDouble("initial_value");
-    startLocus = genes.loci;
     
     // Reserve memory space for phenotypes (this will be expanded when necessary):
-    X.reserve(10000*dims);
-    // clear transform list:
-    transforms.clear();
+    reserve(get_dims(),10000);
 }
 
-bool TraitConstant::isConstant() { return true; }
+bool TraitConstant::is_constant() { return true; }
 
-void TraitConstant::initialize(int n0) {
+void TraitConstant::initialize() {
     // do nothing
 }
 
 void TraitConstant::generatePhenotypes() {
-    X.assign(pop.size()*dims, Xinit);
+    // We don't need a GP map for this
+    assign(get_dims(), pop.size(), Xinit);
 }
 
+/*
+void TraitConstant::add_to_checkpoint(Checkpoint &cp) {
+    // do nothing
+}
+
+void TraitConstant::read_to_checkpoint(Checkpoint &cp, iSimfile &isf) {
+    // niente
+}
+
+int TraitConstant::resume_from_checkpoint(Checkpoint &cp, int dataIndex){
+    return dataIndex;
+}
+*/
+
+/* class Trait_sample {
+    protected:
+    int dims;
+    int size;
+    std::vector<traitType> trait_values;
+    public:
+    Trait_sample(Trait& T);
+    int get_dims() {return dims;}
+    int get_size() {return size;}
+    void write_to_file(oSimfile &osf);
+};*/
+
+Trait_sample::Trait_sample(Trait & T) : Matrix<traitType>(T){
+    //assert(dims*size == trait_values.size());
+}
+
+//void Trait_sample::write_to_file(oSimfile &osf) {
+//    osf.write<size_type>(dims);
+//    osf.write<size_type>(size);
+//    osf.writeArray<traitType>(&trait_values.at(0), dims*size);
+//}
+
+Trait_sample::Trait_sample(iSimfile& isf) : Matrix<traitType>(isf){
+//    dims = isf.read<size_type>();
+//    size = isf.read<size_type>();
+//    isf.readArray<traitType>(trait_values, dims*size);
+}

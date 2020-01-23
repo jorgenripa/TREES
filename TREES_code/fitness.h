@@ -51,6 +51,7 @@ class StabilizingSelection : public Fitness {
 protected:
     // cost = costCoefficient*sum(|dx|^costExponent)
     Trait* zTrait;
+    double optimum;
     double cost_coefficient;
     double cost_exponent;
 public:
@@ -77,8 +78,8 @@ protected:
     double r, K0, sK, sa, s_space, k_space;
     //    inline double& getTrait(int individual) { return traits[0].traitValue(individual); }
     Trait* xTrait;
-    inline double& getX(int individual) { return xTrait->traitValue(individual); }
-    inline double& getX(int individual, int dim) { return xTrait->traitValue(individual,dim); }
+    inline traitType& getX(int individual) { return xTrait->traitValue(individual); }
+    inline traitType& getX(int individual, int dim) { return xTrait->traitValue(individual,dim); }
     double getTraitDist2( int ind1, int ind2); // squared distance in trait space
 public:
     ResourceLandscape(Population& pop, ParameterFile& pf);
@@ -100,7 +101,7 @@ protected:
     double ta; // trade-off
     double cmin; // minimal consumption level for status quo (standard = 1)
     Trait* xTrait; // resource adaptation trait (only first dimension is used)
-    inline double& getX(int individual) { return xTrait->traitValue(individual,0); }
+    inline traitType& getX(int individual) { return xTrait->traitValue(individual,0); }
 public:
     DiscreteResources(Population& pop, ParameterFile& pf);
     virtual ~DiscreteResources();

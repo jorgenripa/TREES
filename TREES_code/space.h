@@ -28,8 +28,8 @@
 #include <cmath>
 
 #include "parameterFile.h"
-#include "sample.h"
 #include "trait.h"
+#include "matrix.h"
 
 /////////////////////////////
 // Space modules
@@ -38,9 +38,11 @@
 /////////////////////////////
 
 class Population;
+class Space_sample;
 
 // The space interface:
 class Space {
+    friend class Space_sample;
 protected:
     Population& pop;
     int Dims;
@@ -48,52 +50,83 @@ public:
     Space(Population& p);
     virtual ~Space();
     int getDims() { return Dims; }
-    virtual void initialize(int n0)=0;
+    virtual void initialize()=0;
     virtual void disperse()=0;
     virtual void prepareNewGeneration(int size)=0;
     virtual void nextGeneration()=0;
     virtual void addChild(int mom, int dad)=0;
     virtual void compactData(std::vector<bool>& alive)=0;
-    virtual void addToSample(Sample& theSample)=0;
-    virtual void readToSample(Sample& theSample, iSimfile& isf, int n)=0;
-    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex)=0;
+    virtual Space_sample* make_sample()=0;
+    virtual void resumeFromCheckpoint(Space_sample* S_sample)=0;
     virtual double getPosition(int individual, int dimension)=0;
     virtual double getDist2(int ind1, int ind2)=0; // squared distance
+    virtual double get_mean(int dim)=0;
+    virtual double get_variance(int dim, double mean)=0;
     virtual bool isDiscrete()=0;
 };
 
-// The DiscreteSpace interface
-class DiscreteSpace : public Space {
+enum Space_types {
+    Discrete_space_type,
+    Continuous_space_type
+};
+
+class Space_sample {
+protected:
+    int pop_size;
+    int dims;
+    Space_sample(Space& S);
+    Space_sample(iSimfile& isf);
 public:
-    DiscreteSpace(Population& p);
+    virtual ~Space_sample();
+    virtual void write_to_file(oSimfile& osf);
+    static Space_sample* create_from_file(iSimfile& isf);
+};
+
+// The DiscreteSpace interface
+class Discrete_space : public Space {
+    friend class Discrete_space_sample;
+public:
+    Discrete_space(Population& p);
     //virtual ~DiscreteSpace()=0;
     // new functions:
     virtual int getLinearPatch(int individual)=0;
     virtual int popSizeInPatch(int linearPatch)=0;
     virtual int getPatchCount()=0;
     // From Space interface:
-    virtual void initialize(int n0)=0;
+    virtual void initialize()=0;
     virtual void disperse()=0;
     virtual void prepareNewGeneration(int size)=0;
     virtual void nextGeneration()=0;
     virtual void addChild(int mom, int dad)=0;
     virtual void compactData(std::vector<bool>& alive)=0;
-    virtual void addToSample(Sample& theSample)=0;
-    virtual void readToSample(Sample& theSample, iSimfile& isf, int n)=0;
-    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex)=0;
+    virtual void resumeFromCheckpoint(Space_sample* S_sample)=0;
     virtual double getPosition(int individual, int dim)=0;
     virtual double getDist2(int ind1, int ind2)=0; // squared distance
+    virtual double get_mean(int dim)=0;
+    virtual double get_variance(int dim, double mean)=0;
     virtual bool isDiscrete();
+    virtual Space_sample* make_sample();
 };
 
-// A discrete space implementation, with global dispersal.
-class DiscreteSpaceImp : public DiscreteSpace {
+class Discrete_space_sample : public Space_sample {
+    friend class Discrete_space_imp;
 protected:
-    std::vector<int> patches;
-    std::vector<int> newPatches;
+    std::vector<int> linear_patches;
+public:
+    Discrete_space_sample(Discrete_space& S);
+    Discrete_space_sample(iSimfile& isf);
+    virtual ~Discrete_space_sample();
+    virtual void write_to_file(oSimfile& osf);
+};
+
+// A discrete space implementation
+class Discrete_space_imp : public Discrete_space {
+protected:
+    Matrix<int> patches;
+    Matrix<int> newPatches;
     std::vector<int> patchPopSizes;
-    std::vector<int> linearPatches;
-    timeType generationLastCount;
+    std::vector<int> linearPatches; // one per individual
+    time_type generationLastCount;
     int length; // size of space = length^Dims
     int initialPatch; // starting patch for all individuals (in all dimensions)
     Trait* PDisp;
@@ -119,60 +152,62 @@ protected:
         }
     }
     int calcLinearPatch(int individual);
+    std::vector<int> calc_coords_from_linear(int linear);
     void assignLinearPatches();
 public:
-    DiscreteSpaceImp(Population& p, ParameterFile& pf);
-    virtual ~DiscreteSpaceImp();
-    int& getPatch(int individual, int dim) {return patches[individual*Dims + dim];}
+    Discrete_space_imp(Population& p, ParameterFile& pf);
+    virtual ~Discrete_space_imp();
+    int& getPatch(int individual, int dim) {return patches(dim,individual);}
     // DiscreteSpace interface:
     virtual int getLinearPatch(int individual);
     virtual int popSizeInPatch(int linearPatch);
     virtual int getPatchCount() { return std::pow(length,Dims); }
     // Space interface:
-    virtual void initialize(int n0);
+    virtual void initialize();
     virtual void disperse();
     virtual void prepareNewGeneration(int size);
     virtual void nextGeneration();
     virtual void addChild(int mom, int dad);
     virtual void compactData(std::vector<bool>& alive);
-    virtual void addToSample(Sample& theSample);
-    virtual void readToSample(Sample& theSample, iSimfile& isf, int n);
-    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex);
+    virtual void resumeFromCheckpoint(Space_sample* S_sample);
     virtual double getPosition(int individual, int dim);
     virtual double getDist2(int ind1, int ind2); // squared distance
+    virtual double get_mean(int dim);
+    virtual double get_variance(int dim, double mean);
 };
 
 // The NullSpace class is a DiscreteSpace implementation
 //   with no stored positions.
 // All individuals are regarded as positioned in patch 0.
-class NullSpace : public DiscreteSpace {
+class Null_space : public Discrete_space {
 public:
-    NullSpace(Population& p);
-    virtual ~NullSpace();
+    Null_space(Population& p);
+    virtual ~Null_space();
 
     virtual int getLinearPatch(int individual);
     virtual int popSizeInPatch(int linearPatch);
     virtual int getPatchCount();
     // From Space interface:
-    virtual void initialize(int n0);
+    virtual void initialize();
     virtual void disperse();
     virtual void prepareNewGeneration(int size);
     virtual void nextGeneration();
     virtual void addChild(int mom, int dad);
     virtual void compactData(std::vector<bool>& alive);
-    virtual void addToSample(Sample& theSample);
-    virtual void readToSample(Sample& theSample, iSimfile& isf, int n);
-    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex);
+    virtual void resumeFromCheckpoint(Space_sample* S_s);
     virtual double getPosition(int individual, int dimension);
     virtual double getDist2(int ind1, int ind2); // squared distance
+    virtual double get_mean(int dim);
+    virtual double get_variance(int dim, double mean);
 };
 
 
-class ContinuousSpace : public Space {
+class Continuous_space : public Space {
+    friend class Continuous_space_sample;
 protected:
     typedef float positionType;
-    std::vector<positionType> pos;
-    std::vector<positionType> newPos;
+    Matrix<positionType> pos;
+    Matrix<positionType> newPos;
     double initialPosition;  // starting position for all individuals (in all dimensions)
     Trait* PDisp;
     positionType dispdist; // mean dispersal distance
@@ -195,22 +230,32 @@ protected:
         }
     }
 public:
-    ContinuousSpace(Population& p, ParameterFile& pf);
-    virtual ~ContinuousSpace();
+    Continuous_space(Population& p, ParameterFile& pf);
+    virtual ~Continuous_space();
     virtual double getPosition(int individual, int dim);
-    positionType& getCoord(int individual, int dim); // position with reference
-    virtual void initialize(int n0);
+    //positionType& getCoord(int individual, int dim); // position with reference
+    virtual void initialize();
     virtual void disperse();
     virtual void prepareNewGeneration(int size);
     virtual void nextGeneration();
     virtual void addChild(int mom, int dad);
     virtual void compactData(std::vector<bool>& alive);
-    virtual void addToSample(Sample& theSample);
-    virtual void readToSample(Sample& theSample, iSimfile& isf, int n);
-    virtual int resumeFromCheckpoint(Checkpoint& cp, int dataIndex);
+    virtual void resumeFromCheckpoint(Space_sample* S_sample);
     virtual double getDist2(int ind1, int ind2); // squared distance
+    virtual double get_mean(int dim);
+    virtual double get_variance(int dim, double mean);
     virtual bool isDiscrete();
+    virtual Space_sample* make_sample();
 };
 
-
+class Continuous_space_sample : public Space_sample {
+    friend class Continuous_space;
+    protected:
+    Matrix<Continuous_space::positionType> positions;
+    public:
+    Continuous_space_sample(Continuous_space& S);
+    Continuous_space_sample(iSimfile& isf);
+    virtual ~Continuous_space_sample();
+    virtual void write_to_file(oSimfile& osf);
+};
 #endif /* defined(__Species__space__) */

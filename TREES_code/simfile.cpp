@@ -21,23 +21,67 @@
 
 
 #include <iostream>
+#include <sstream>
 #include <assert.h>
 #include "simfile.h"
 
-Simfile::Simfile(std::string filename) {
+void endian_test() {
     // Test for Little Endian:
     unsigned char SwapTest[2] = { 1, 0 };
     short w = *(short *) SwapTest;
     assert( w == 1 );
-        
-    open(filename.c_str(), std::fstream::binary | std::fstream::out);
-    imbue(std::locale::classic());
 }
 
-Simfile::~Simfile() {
+oSimfile::oSimfile(std::string filename) {
+    endian_test();
+    open(filename.c_str(), std::fstream::binary | std::fstream::out);
+    imbue(std::locale::classic());
+    write<uint32_t>(current_file_version);
+}
+
+void oSimfile::close() {
+    std::ofstream::close();
+}
+
+oSimfile::~oSimfile() {
     close();
 }
 
+void oSimfile::writeString(const std::string& s) {
+    std::ofstream::write(s.c_str(), s.length());
+    put(0);
+}
+
+iSimfile::iSimfile(std::string filename) {
+    endian_test();
+    open(filename.c_str(), std::fstream::binary | std::fstream::in);
+    if (!is_open()) {
+        std::cout << "Failed to open file " << filename << std::endl;
+        exit(1);
+    }
+    imbue(std::locale::classic());
+    int file_version = read<uint32_t>();
+    if (file_version!=current_file_version ) {
+        std::cout << "File error. File " << filename << " is version " << file_version << " instead of " << current_file_version << std::endl;
+        exit(1);
+    }
+}
+
+iSimfile::~iSimfile() {
+    close();
+}
+
+std::string iSimfile::readString() {
+    std::stringstream buffer;
+    std::ifstream::get(*buffer.rdbuf(), char(0));
+    // get the null character:
+    std::ifstream::get();
+    return buffer.str();
+}
+
+
+
+/*
 void Simfile::write(float x) {
     std::ofstream::write((char*)&x, sizeof(float));
 }
@@ -50,8 +94,15 @@ void Simfile::write(int64_t i) {
     std::ofstream::write((char*)&i, sizeof(int64_t));
 }
 
-void Simfile::write(idType id) {
-    std::ofstream::write((char*)&id, sizeof(idType));
+void Simfile::write(id_type id) {
+    std::ofstream::write((char*)&id, sizeof(id_type));
+}
+*/
+
+
+/*
+void Simfile::writeArray( signed char* A, int size) {
+    std::ofstream::write((char*)A, sizeof(signed char)*size);
 }
 
 void Simfile::writeArray( float* A, int size) {
@@ -72,12 +123,7 @@ void Simfile::writeArray( int* A, int size) {
     std::ofstream::write((char*)A, sizeof(int)*size);
 }
 
-void Simfile::writeArray( idType* A, int size) {
-    std::ofstream::write((char*)A, sizeof(idType)*size);
+void Simfile::writeArray( id_type* A, int size) {
+    std::ofstream::write((char*)A, sizeof(id_type)*size);
 }
-
-void Simfile::writeString(std::string s) {
-    std::ofstream::write(s.c_str(), s.length());
-    put('\n');
-    put(0);
-}
+*/

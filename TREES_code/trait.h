@@ -29,72 +29,70 @@
 
 #include "transform.h"
 #include "parameterFile.h"
+#include "types.h" // defines traitType
+#include "matrix.h"
 
 class Population;
 class Genetics;
-class Sample;
+class Genotype_Phenotype_map;
+class Checkpoint;
+class iSimfile;
 
 /////////////////////////////
 // Trait class
-// A trait is really a genotype-phenotype map
-// The Trait class is friends with the Genetics class
+// Contains all trait values
+// Has a genotype-phenotype map
 /////////////////////////////
-class Trait {
+class Trait : public Matrix<traitType> {
+    friend class Population;
+    friend class Genotype_Phenotype_map;
+    friend class Diallelic_GP_map;
+    friend class ContinuousAlleles_GP_map;
+    friend class Omnigenic_GP_map;
+    friend class Trait_sample;
 protected:
     Trait(std::string& name, Population& p);
     std::string name;
     Population& pop;
     Genetics& genes;
-    int dims; // number of dimensions
-    std::vector<double> X; // phenotypic data of entire population
-    double Xinit; // initial value
-    typedef std::vector<double>::iterator Xiter;
-    int startLocus;
-    int lociPerDim; // loci per dimension
-    std::vector<Transform*> transforms;
+    Genotype_Phenotype_map* GP_map;
+    void set_dims(int d) { M = d;}
+    traitType Xinit; // initial value
 public:
     Trait(std::string& name, Population& p, ParameterFile& pf);
     ~Trait();
-    void addTransform( Transform* t);
-    virtual void initialize(int n0);
+    virtual bool is_constant();
+    virtual void initialize();
     virtual void generatePhenotypes();
-    void compactData(std::vector<bool>& alive);
-    double& traitValue(int individual, int dim=0);
-    //    {return X[individual];} // not worth it!
-    //std::vector<double>& getX() { return X;}
+    void compactData(std::vector<bool>& alive) { compact_data(alive);}
+    traitType& traitValue(int individual, int dim=0);
     std::string& getName() { return name; }
-    int getDims() { return dims; }
-    void addToSample(Sample& s);
-    virtual bool isConstant();
+    int get_dims() { return M; }
+    Genotype_Phenotype_map* get_GP_map() { return GP_map;}
+//    virtual void add_to_checkpoint(Checkpoint& cp);
+//    virtual void read_to_checkpoint(Checkpoint& cp, iSimfile& isf);
+//    virtual int resume_from_checkpoint(Checkpoint& cp, int dataIndex);
 };
 
 class TraitConstant : public Trait {
 public:
     TraitConstant(std::string& name, Population& p, ParameterFile& pf);
-    virtual void initialize(int n0);
+    virtual bool is_constant();
+    virtual void initialize();
     virtual void generatePhenotypes();
-    virtual bool isConstant();
+//    virtual void add_to_checkpoint(Checkpoint& cp);
+//    virtual void read_to_checkpoint(Checkpoint& cp, iSimfile& isf);
+//    virtual int resume_from_checkpoint(Checkpoint& cp, int dataIndex);
 };
 
-/*
-class MultiTraitIterator {
+class Trait_sample : public Matrix<traitType>{
 protected:
-    int traitCount; // height of virtual array
-    double** traitp; // list of pointers to trait values
 public:
-    MultiTraitIterator(std::vector<Trait>& traitList, int startpos=0);
-    MultiTraitIterator(std::vector<Trait*>& traitList, int startpos=0);
-    ~MultiTraitIterator();
-    inline double& operator [](int t) {return *traitp[t];}
-    inline MultiTraitIterator& operator ++() {
-        for (int t=0; t<traitCount; ++t) {
-            ++traitp[t];
-        }
-        return *this;
-    }
-    
-    //bool atEnd();
+    Trait_sample(Trait& T);
+    Trait_sample(iSimfile& isf);
+    int get_dims() {return M;}
+    int get_size() {return N;}
+    //void write_to_file(oSimfile &osf);
 };
-*/
 
 #endif /* defined(__Species__trait__) */

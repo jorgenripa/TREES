@@ -55,7 +55,7 @@ Preference::Preference(Population& p, ParameterFile & pf) : pop(p)
     pref = pop.findTrait(prefName);
     std::string strengthName = pf.getString("strength");
     strength = pop.findTrait(strengthName);
-    if ((target->getDims() != pref->getDims()) || (target->getDims() != strength->getDims()) ) {
+    if ((target->get_dims() != pref->get_dims()) || (target->get_dims() != strength->get_dims()) ) {
         std::cout << "Target_selection error: Display, Preference and Strength traits must have the same number of dimensions\n";
         exit(0);
     }
@@ -63,13 +63,13 @@ Preference::Preference(Population& p, ParameterFile & pf) : pop(p)
     dislimsq = disassortative_limit*disassortative_limit;
 }
 
-double Preference::getPartnerWeight(int female, int male) {
+traitType Preference::getPartnerWeight(int female, int male) {
     Fastexp fexp;
 
-    double esum = 0;
-    for (int d=0; d<pref->getDims(); ++d) {
-        double dx = getY(female,d) - getX(male,d);
-        double cd = getC(female,d);
+    traitType esum = 0;
+    for (int d=0; d<pref->get_dims(); ++d) {
+        traitType dx = getY(female,d) - getX(male,d);
+        traitType cd = getC(female,d);
         if (cd>=0) {
             esum += cd * dx * dx;
         } else {

@@ -26,46 +26,64 @@
 #include <stdio.h>
 
 #include "parameterFile.h"
+#include "types.h" // defines traitType
+#include "fastmath.h"
+
+class Genotype_Phenotype_map; // neede here to prevent circular header files.
 
 class Transform {
 public:
-    virtual void transform(double* x, size_t count)=0;
+    virtual void transform(traitType* x, size_t count)=0;
+    virtual double transform_single(double x)=0;
     virtual ~Transform();
 };
 
 class LinearTransform : public Transform {
-    double offset;
-    double scale;
+protected:
+    traitType offset;
+    traitType scale;
 public:
     LinearTransform(ParameterFile& pf);
+    LinearTransform(traitType offset, traitType scale);
     virtual ~LinearTransform();
-    virtual void transform(double* x, size_t count);
+    virtual void transform(traitType* x, size_t count);
+    virtual double transform_single(double x);
 };
+
+
+class Range : public LinearTransform {
+public:
+    Range(ParameterFile& pf, Genotype_Phenotype_map& GP_map);
+    virtual ~Range();
+};
+
 
 class AbsTransform : public Transform {
 public:
     AbsTransform(ParameterFile& pf);
     virtual ~AbsTransform();
-    virtual void transform(double* x, size_t count);
+    virtual void transform(traitType* x, size_t count);
+    virtual double transform_single(double x);
 };
 
 class LogisticTransform : public Transform {
-    double xmin;
-    double xmax;
+    traitType xmin;
+    traitType scale;
+    Fastexp fexp;
 public:
     LogisticTransform(ParameterFile& pf);;
     virtual ~LogisticTransform();
-    virtual void transform(double* x, size_t count);
+    virtual void transform(traitType* x, size_t count);
+    virtual double transform_single(double x);
 };
 
 class NormalDeviate : public Transform {
-    double SD;
+    traitType SD;
 public:
     NormalDeviate(ParameterFile& pf);
     virtual ~NormalDeviate();
-    virtual void transform(double* x, size_t count);
+    virtual void transform(traitType* x, size_t count);
+    virtual double transform_single(double x);
 };
-
-
 
 #endif /* defined(__Species__transform__) */

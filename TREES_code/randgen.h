@@ -25,29 +25,38 @@
 
 #include <vector>
 
+#include "types.h"
+
+double rand1(); // uniform [0,1)
+double randn();
 int poissrnd(double lambda);
 int poissrndAppr(double lambda);
 int binornd(int n, double p);
 int binorndAppr(int n, double p);
 int binoSmallP(int n, double p);
 double doubleExp(double absmean);
-double randn();
-double rand1(); // uniform [0,1)
-unsigned randomize(); // also return the seed
-void randseed(unsigned seed);
+seed_type randomize(); // also return the seed
+void randseed(seed_type seed);
+seed_type make_seed();
 int weightedChoice( std::vector<double>& weights);
 int weightedChoiceCumSum( std::vector<double>& cumWeights);
 
 // class to generate a stream of random bits (true/false)
 class bitGenerator {
-    unsigned bits;
+    uint64_t bits;
     int bitsleft;
     void regenerate();
 
 public:
     bitGenerator();
-    bool nextBit();
-
+    inline bool nextBit(){
+        if (bitsleft-- == 0) {
+            regenerate();
+        }
+        bool reply = bits & 1;
+        bits >>= 1;
+        return reply;
+    }
 };
 
 #endif

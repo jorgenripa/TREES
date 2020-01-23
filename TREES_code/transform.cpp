@@ -21,10 +21,15 @@
 
 
 #include <cmath>
+#include <iostream>
+
 #include "transform.h"
+#include "genotype_phenotype_map.h"
 #include "fastmath.h"
 #include "parameterFile.h"
 #include "randgen.h"
+#include "trait.h"
+#include "genetics.h"
 
 Transform::~Transform() {}
 
@@ -32,40 +37,69 @@ LinearTransform::LinearTransform(ParameterFile& pf) {
     offset = pf.getDouble("offset");
     scale = pf.getDouble("scale");
 }
+
+LinearTransform::LinearTransform(traitType offset, traitType scale) {
+    this->offset = offset;
+    this->scale = scale;
+}
+
 LinearTransform::~LinearTransform() {}
 
-void LinearTransform::transform(double* x, size_t count) {
+void LinearTransform::transform(traitType* x, size_t count) {
     for (size_t i=0; i<count; ++i) {
         *x = offset + scale*(*x);
         ++x;
     }
 }
 
+double LinearTransform::transform_single(double x) {
+    return offset + scale*x;
+}
+
+Range::Range(ParameterFile& pf, Genotype_Phenotype_map& GP_map): LinearTransform(0,0) {
+    Diallelic_GP_map* the_map = dynamic_cast<Diallelic_GP_map*>(&GP_map);
+    if (the_map) {
+        traitType min_value = pf.getDouble("min");
+        traitType max_value = pf.getDouble("max");
+        int L = the_map->get_loci_per_dim(); // untransformed values [-L,L]
+        offset = L + min_value;
+        scale = (max_value-min_value)/2.0/L;
+    } else {
+        std::cout << "Error! \n" << "Trait " << GP_map.get_trait().getName() << ": A Range transform requires Diallelic Genetics.\n";
+        exit(1);
+    }
+}
+
+Range::~Range() {};
+
 AbsTransform::AbsTransform(ParameterFile& pf) {}
 AbsTransform::~AbsTransform() {}
 
-void AbsTransform::transform(double* x, size_t count) {
+void AbsTransform::transform(traitType* x, size_t count) {
     for (size_t i=0; i<count; ++i) {
         *x = fabs(*x);
         ++x;
     }
 }
+double AbsTransform::transform_single(double x) {
+    return fabs(x);
+}
+
 
 LogisticTransform::LogisticTransform(ParameterFile& pf) {
     xmin = pf.getDouble("min");
-    xmax = pf.getDouble("max");
+    double xmax = pf.getDouble("max");
+    scale = xmax - xmin;
 }
 
 LogisticTransform::~LogisticTransform() {}
 
-void LogisticTransform::transform(double* x, size_t count){
+void LogisticTransform::transform(traitType* x, size_t count){
     // A logistic transform to the range (xmin, xmax)
     // x=0 is mapped to the range midpoint
     // The slope at x=0 is scaled to 1
     // f = xmin + scale/(1 + exp(-4x/scale))
     // where scale = xmax-xmin
-    Fastexp fexp;
-    double scale = xmax-xmin;
     for (size_t i=0; i<count; ++i) {
         double expmx = fexp.exp(-4*(*x)/scale);
         *x = xmin + scale/(1+expmx);
@@ -73,15 +107,25 @@ void LogisticTransform::transform(double* x, size_t count){
     }
 }
 
+double LogisticTransform::transform_single(double x) {
+    double expmx = fexp.exp(-4*x/scale);
+    x = xmin + scale/(1+expmx);
+    return x;
+}
+
+
 NormalDeviate::NormalDeviate(ParameterFile& pf) {
     SD = pf.getPositiveDouble("sd");
 }
 
 NormalDeviate::~NormalDeviate() {}
 
-void NormalDeviate::transform(double* x, size_t count) {
+void NormalDeviate::transform(traitType* x, size_t count) {
     for (size_t i=0; i<count; ++i) {
         *x += SD*randn();
         ++x;
     }
+}
+double NormalDeviate::transform_single(double x) {
+    return x + SD*randn();
 }

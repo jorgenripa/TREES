@@ -19,16 +19,29 @@
 // Contact: jorgen.ripa@biol.lu.se
 //
 
+#ifndef bit_vector_hpp
+#define bit_vector_hpp
 
-#ifndef Species_types_h
-#define Species_types_h
-
+#include <stdio.h>
+#include <vector>
 #include <cstdint>
+#include "simfile.h"
 
-typedef uint64_t id_type;
-typedef int64_t time_type;
-typedef uint64_t seed_type;
-typedef uint32_t size_type;
-typedef float traitType;
-typedef float geneStorage; // used for file storage of gene effects
-#endif
+typedef uint64_t store_type;
+
+class bit_vector : protected std::vector<store_type> {
+    protected:
+    store_type current_int;
+    int next_position;
+    
+    public:
+    bit_vector(); // default constructor
+    void reserve(size_type bit_count);
+    void push_back(bool bit);
+    size_type get_total_bit_count();
+    size_type get_total_byte_count();
+    void write_to_file(oSimfile& osf);
+    void read_from_file(iSimfile& isf);
+    bool get_bit(size_type i);
+};
+#endif /* bit_vector_hpp */
